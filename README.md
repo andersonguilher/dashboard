@@ -1,6 +1,7 @@
 # Dashboard de Operações de Voo
 
-![Visão Geral do Dashboard](https://i.imgur.com/uTqf8L2.png)
+<img width="1622" height="930" alt="image" src="https://github.com/user-attachments/assets/834dd1db-2191-48d1-96bb-478efe30a60e" />
+
 
 Um painel de controle completo e dinâmico, desenvolvido em PHP e JavaScript, para monitorar e analisar as operações de uma companhia aérea virtual (VA) ou comunidade de simulação de voo. O sistema oferece dashboards detalhados, estatísticas de pilotos, relatórios financeiros e um painel administrativo para uma configuração flexível e intuitiva.
 
