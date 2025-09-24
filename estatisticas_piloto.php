@@ -59,26 +59,44 @@ function get_pilot_daily_stats_for_month($conn, $interval_months, $aggregate_exp
 // =================================================================
 // 2. BUSCAR DADOS E PROCESSAR FILTROS
 // =================================================================
-$pilot_user_id = $_GET['id'] ?? null;
-if (!$pilot_user_id) {
+$pilot_network_id = $_GET['id'] ?? null;
+$pilot_db_id = $_GET['user_id'] ?? null;
+$network_filter = $_GET['rede'] ?? 'geral'; 
+
+$piloto_info = null;
+$pilot_user_id = null; // Guarda o ID de rede (IVAO/VATSIM) para os links de filtro
+
+if ($pilot_network_id) {
+    $pilot_user_id = $pilot_network_id;
+    $stmt_piloto = $conn_pilotos->prepare("SELECT CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name, " . COL_FOTO_PERFIL . ", " . COL_VATSIM_ID . ", " . COL_IVAO_ID . " FROM " . PILOTS_TABLE . " WHERE " . COL_VATSIM_ID . " = ? OR " . COL_IVAO_ID . " = ?");
+    $stmt_piloto->bind_param("ss", $pilot_network_id, $pilot_network_id);
+    $stmt_piloto->execute();
+    $piloto_info = $stmt_piloto->get_result()->fetch_assoc();
+    $stmt_piloto->close();
+
+} elseif ($pilot_db_id) {
+    $stmt_piloto = $conn_pilotos->prepare("SELECT CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name, " . COL_FOTO_PERFIL . ", " . COL_VATSIM_ID . ", " . COL_IVAO_ID . " FROM " . PILOTS_TABLE . " WHERE " . COL_ID_PILOTO . " = ?");
+    $stmt_piloto->bind_param("i", $pilot_db_id);
+    $stmt_piloto->execute();
+    $piloto_info = $stmt_piloto->get_result()->fetch_assoc();
+    $stmt_piloto->close();
+    
+    if ($piloto_info) {
+        // Define o ID de rede para os links de filtro, priorizando VATSIM
+        $pilot_user_id = $piloto_info[COL_VATSIM_ID] ?? $piloto_info[COL_IVAO_ID];
+    }
+} else {
     die("ID de piloto não fornecido.");
 }
 
-$network_filter = $_GET['rede'] ?? 'geral'; 
-
-$stmt_piloto = $conn_pilotos->prepare("SELECT CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name, " . COL_FOTO_PERFIL . ", " . COL_VATSIM_ID . ", " . COL_IVAO_ID . " FROM " . PILOTS_TABLE . " WHERE " . COL_VATSIM_ID . " = ? OR " . COL_IVAO_ID . " = ?");
-$stmt_piloto->bind_param("ss", $pilot_user_id, $pilot_user_id);
-$stmt_piloto->execute();
-$piloto_info = $stmt_piloto->get_result()->fetch_assoc();
-$stmt_piloto->close();
 
 if (!$piloto_info) {
     die("Piloto não encontrado.");
 }
 
 // Prepara a cláusula WHERE e os parâmetros para todas as consultas de voos
-$vatsim_id = $piloto_info['vatsim_id'];
-$ivao_id = $piloto_info['ivao_id'];
+$vatsim_id = $piloto_info[COL_VATSIM_ID];
+$ivao_id = $piloto_info[COL_IVAO_ID];
 $sql_where_clause = "";
 $bind_params = [];
 $bind_types = "";
