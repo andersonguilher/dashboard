@@ -132,7 +132,7 @@ if ($current_month_flights_result) {
     }
 }
 
-// --- O RESTANTE DA LÓGICA DE BUSCA DE DADOS PERMANECE A MESMO ---
+// --- O RESTANTE DA LÓGICA DE BUSCA DE DADOS ---
 $recent_flights_result = $conn_voos->query("SELECT userId, callsign, flightPlan_aircraft_model as EQP, flightPlan_departureId as ORIG, flightPlan_arrivalId as DEST, time, createdAt, network FROM ".DB_VOOS_NAME.".voos ORDER BY createdAt DESC LIMIT 10");
 $kpi_data = $conn_voos->query("SELECT SUM(time) as total_seconds, COUNT(*) as total_flights FROM ".DB_VOOS_NAME.".voos")->fetch_assoc();
 $kpi_total_hours = number_format(floor($kpi_data['total_seconds'] / 3600));
@@ -182,27 +182,65 @@ foreach ($daily_seconds_anterior as $seconds) {
   $chart_data_horas_mes_anterior[] = round($running_total_anterior / 3600, 1);
 }
 $chart_labels_dias_mes = range(1, 31);
+
+// --- LÓGICA REVISADA PARA EXIBIR A SEMANA CORRENTE (Dom-Sáb) ---
+
+// 1. Definir os dias da semana para o eixo X do gráfico
 $chart_labels_dias_semana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-$chart_data_horas_semana_actual = array_fill(0, 7, 0);
-$chart_data_horas_semana_anterior = array_fill(0, 7, 0);
-$sql_semana_actual = "SELECT DAYOFWEEK(createdAt) as dow, SUM(time) as total_seconds FROM ".DB_VOOS_NAME.".voos WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY dow";
-$result_semana_actual = $conn_voos->query($sql_semana_actual);
-if ($result_semana_actual) {
-  while ($row = $result_semana_actual->fetch_assoc()) {
-    $chart_data_horas_semana_actual[$row['dow'] - 1] = round($row['total_seconds'] / 3600, 1);
-  }
+$chart_data_horas_semana_atual_corrigido = array_fill(0, 7, 0);
+$chart_data_horas_semana_anterior_corrigido = array_fill(0, 7, 0);
+
+// 2. Calcular as datas de início da semana atual e anterior (considerando Domingo como início)
+$today_day_of_week = date('w'); // Retorna 0 para Domingo, 1 para Segunda..., 6 para Sábado
+$start_of_current_week = date('Y-m-d', strtotime("-$today_day_of_week days"));
+$start_of_previous_week = date('Y-m-d', strtotime("$start_of_current_week -7 days"));
+
+// 3. Buscar dados da semana ATUAL (Do último domingo até hoje)
+$sql_semana_atual_corrigido = "
+    SELECT DATE(createdAt) as dia, SUM(time) as total_seconds
+    FROM " . DB_VOOS_NAME . ".voos
+    WHERE createdAt >= '{$start_of_current_week} 00:00:00'
+    GROUP BY dia";
+
+$result_semana_atual_corrigido = $conn_voos->query($sql_semana_atual_corrigido);
+$map_semana_atual_corrigido = [];
+if ($result_semana_atual_corrigido) {
+    while ($row = $result_semana_atual_corrigido->fetch_assoc()) {
+        $map_semana_atual_corrigido[$row['dia']] = round($row['total_seconds'] / 3600, 1);
+    }
 }
-$sql_semana_anterior = "SELECT DAYOFWEEK(createdAt) as dow, SUM(time) as total_seconds FROM ".DB_VOOS_NAME.".voos WHERE createdAt BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY dow";
-$result_semana_anterior = $conn_voos->query($sql_semana_anterior);
-if ($result_semana_anterior) {
-  while ($row = $result_semana_anterior->fetch_assoc()) {
-    $chart_data_horas_semana_anterior[$row['dow'] - 1] = round($row['total_seconds'] / 3600, 1);
-  }
+
+// 4. Buscar dados da semana ANTERIOR
+$sql_semana_anterior_corrigido = "
+    SELECT DATE(createdAt) as dia, SUM(time) as total_seconds
+    FROM " . DB_VOOS_NAME . ".voos
+    WHERE createdAt >= '{$start_of_previous_week} 00:00:00' AND createdAt < '{$start_of_current_week} 00:00:00'
+    GROUP BY dia";
+
+$result_semana_anterior_corrigido = $conn_voos->query($sql_semana_anterior_corrigido);
+$map_semana_anterior_corrigido = [];
+if ($result_semana_anterior_corrigido) {
+    while ($row = $result_semana_anterior_corrigido->fetch_assoc()) {
+        $map_semana_anterior_corrigido[$row['dia']] = round($row['total_seconds'] / 3600, 1);
+    }
 }
-$current_day_of_week = date('w');
-for ($i = $current_day_of_week + 1; $i < 7; $i++) {
-  $chart_data_horas_semana_actual[$i] = null;
+
+// 5. Montar os arrays finais para o gráfico
+for ($i = 0; $i < 7; $i++) {
+    $data_da_semana_atual = date('Y-m-d', strtotime("$start_of_current_week +$i days"));
+    $data_da_semana_anterior = date('Y-m-d', strtotime("$start_of_previous_week +$i days"));
+
+    // Preenche o array da semana anterior
+    $chart_data_horas_semana_anterior_corrigido[$i] = $map_semana_anterior_corrigido[$data_da_semana_anterior] ?? 0;
+    
+    // Preenche o array da semana atual, mas define como nulo para dias futuros, para que a linha não avance no tempo
+    if (strtotime($data_da_semana_atual) > time()) {
+        $chart_data_horas_semana_atual_corrigido[$i] = null;
+    } else {
+        $chart_data_horas_semana_atual_corrigido[$i] = $map_semana_atual_corrigido[$data_da_semana_atual] ?? 0;
+    }
 }
+
 $chart_data_vuelos_mes_actual = array_values(get_daily_stats_for_month($conn_voos, 0, 'COUNT(*)'));
 $chart_data_vuelos_mes_anterior = array_values(get_daily_stats_for_month($conn_voos, 1, 'COUNT(*)'));
 $chart_labels_top_pilots = [];
@@ -777,11 +815,11 @@ $conn_voos->close();
             labels: <?= json_encode($chart_labels_dias_semana) ?>,
             datasets: [{
                 label: '<?= t('current_week') ?>',
-                data: <?= json_encode($chart_data_horas_semana_actual) ?>,
+                data: <?= json_encode($chart_data_horas_semana_atual_corrigido) ?>,
                 borderColor: primaryColor, tension: 0.3, borderWidth: 2
               },{
                 label: '<?= t('previous_week') ?>',
-                data: <?= json_encode($chart_data_horas_semana_anterior) ?>,
+                data: <?= json_encode($chart_data_horas_semana_anterior_corrigido) ?>,
                 borderColor: secondaryColor, tension: 0.3, borderDash: [5, 5], borderWidth: 2
               }]
           },
