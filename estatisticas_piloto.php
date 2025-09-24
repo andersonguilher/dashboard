@@ -2,7 +2,7 @@
 // =================================================================
 // 0. CARREGAR CONFIGURAÇÕES DE IDIOMA E TEMA
 // =================================================================
-require_once __DIR__ . '/../src/config_loader.php';
+require_once __DIR__ . '/src/config_loader.php';
 
 // =================================================================
 // 1. CONFIGURAÇÃO E CONEXÃO COM A BASE DE DADOS
@@ -232,7 +232,7 @@ $conn_voos->close();
 
         <div class="card">
             <div class="profile-header">
-                <img src="<?= htmlspecialchars($piloto_info['foto_perfil'] ?? 'assets/imagens/piloto.png') ?>" onerror="this.onerror=null; this.src='assets/imagens/piloto.png';">
+                <img src="<?= htmlspecialchars($piloto_info['foto_perfil'] ?? 'assets/imagens/piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';">
                 <h1><?= htmlspecialchars($piloto_info['display_name']) ?></h1>
             </div>
             <div class="network-filter">

@@ -2,7 +2,7 @@
 // =================================================================
 // 0. CARREGAR CONFIGURAÇÕES DE IDIOMA E TEMA
 // =================================================================
-require_once __DIR__ . '/../src/config_loader.php';
+require_once __DIR__ . '/src/config_loader.php';
 
 // =================================================================
 // 1. CONFIGURAÇÃO SEGURA E CONEXÃO COM O BANCO DE DADOS
@@ -541,9 +541,9 @@ $conn_voos->close();
                   <td>
                       <?php if (!empty($flight['network'])): ?>
                           <?php if ($flight['network'] === 'i'): ?>
-                              <img src="assets/images/ivao_logo.jpg" alt="IVAO" title="IVAO" class="network-logo">
+                              <img src="assets/ivao_logo.jpg" alt="IVAO" title="IVAO" class="network-logo">
                           <?php elseif ($flight['network'] === 'v'): ?>
-                              <img src="assets/images/vatsim_logo.jpg" alt="VATSIM" title="VATSIM" class="network-logo">
+                              <img src="assets/vatsim_logo.jpg" alt="VATSIM" title="VATSIM" class="network-logo">
                           <?php endif; ?>
                       <?php endif; ?>
                   </td>
@@ -584,7 +584,7 @@ $conn_voos->close();
               $pilot_photo = $pilots_photos[$pilot_id] ?? 'piloto.png';
               $pilot_hours = number_format(format_seconds_to_float($weekly_champions[$cat]['total_time']), 2);
             ?>
-              <img src="<?= htmlspecialchars($pilot_photo) ?>" onerror="this.onerror=null; this.src='piloto.png';">
+              <img src="<?= htmlspecialchars($pilot_photo) ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';">
               <a href="estatisticas_piloto.php?id=<?= urlencode($pilot_id) ?>" class="pilot-link">
                   <div class="name"><?= htmlspecialchars($pilot_name) ?></div>
               </a>
@@ -605,7 +605,7 @@ $conn_voos->close();
             ?>
                 <li>
                   <div class="pilot-details">
-                    <img src="<?= htmlspecialchars($pilot_photo) ?>" class="pilot-photo" onerror="this.onerror=null; this.src='piloto.png';">
+                    <img src="<?= htmlspecialchars($pilot_photo) ?>" class="pilot-photo" onerror="this.onerror=null; this.src='assets/images/piloto.png';">
                     <a href="estatisticas_piloto.php?id=<?= urlencode($pilot_id) ?>" class="pilot-link">
                       <span class="name"><?= htmlspecialchars($pilot_name) ?></span>
                     </a>

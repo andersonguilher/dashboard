@@ -2,7 +2,7 @@
 // =================================================================
 // 0. CARREGAR CONFIGURAÇÕES DE IDIOMA E TEMA
 // =================================================================
-require_once __DIR__ . '/config_loader.php';
+require_once __DIR__ . '/src/config_loader.php';
 
 // =================================================================
 // 1. CONFIGURAÇÃO SEGURA E CONEXÃO COM O BANCO DE DADOS
@@ -198,7 +198,7 @@ $conn_voos->close();
         </div>
         <?php if ($show_pilot_stats && $pilot_data): ?>
             <div class="pilot-profile">
-                <img src="<?= htmlspecialchars($pilot_data['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='piloto.png';" alt="Foto de Perfil">
+                <img src="<?= htmlspecialchars($pilot_data['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto de Perfil">
                 <div class="pilot-info">
                     <h2><?= htmlspecialchars($pilot_data['display_name']) ?></h2>
                     <div class="pilot-meta">
@@ -259,7 +259,7 @@ $conn_voos->close();
                         ?>
                         <li class="<?= $li_class ?>">
                             <a href="?pilot_id=<?= htmlspecialchars($pilot['ID']) ?>">
-                                <img src="<?= htmlspecialchars($pilot['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='piloto.png';" alt="Foto">
+                                <img src="<?= htmlspecialchars($pilot['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto">
                                 <div>
                                     <div class="pilot-name"><?= htmlspecialchars($pilot['display_name']) ?></div>
                                     <div class="last-flight"><strong><i class="fa-solid fa-triangle-exclamation"></i> <?= $status_text ?></strong></div>
