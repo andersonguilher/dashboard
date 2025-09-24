@@ -40,7 +40,7 @@ if (empty($error_message) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = "<strong>Falha ao Salvar:</strong> Ocorreu um erro desconhecido ao tentar escrever no arquivo <code>settings.json</code>.";
         } else {
             // Apenas redireciona se a gravação foi bem-sucedida
-            header('Location: configuracoes.php?status=success');
+            header('Location: index.php?status=success');
             exit;
         }
     }
@@ -105,7 +105,7 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
             </div>
         <?php endif; ?>
 
-        <form action="configuracoes.php" method="POST">
+        <form action="index.php" method="POST">
             <div class="form-group">
                 <label for="language">Idioma Global</label>
                 <select name="language" id="language" <?= !empty($error_message) ? 'disabled' : '' ?>>
