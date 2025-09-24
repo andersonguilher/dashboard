@@ -36,7 +36,7 @@ if (isset($_GET['filtro']) && $_GET['filtro'] === 'ativos_em_alerta') {
 } elseif (isset($_GET['pilot_id']) && !empty($_GET['pilot_id'])) {
     $show_pilot_stats = true;
     $selected_pilot_id = intval($_GET['pilot_id']);
-    $pilot_info_sql = "SELECT *, CONCAT(first_name, ' ', last_name) as display_name FROM Dados_dos_Pilotos WHERE post_id = ?";
+    $pilot_info_sql = "SELECT *, CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name FROM " . PILOTS_TABLE . " WHERE " . COL_POST_ID . " = ?";
     $stmt_piloto = $conn_pilotos->prepare($pilot_info_sql);
     $stmt_piloto->bind_param("i", $selected_pilot_id);
     $stmt_piloto->execute();

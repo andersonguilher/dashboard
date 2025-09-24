@@ -34,19 +34,19 @@ $pilots_details = []; // Novo array para armazenar todos os detalhes
 
 $pilots_sql = "
     SELECT 
-        p.vatsim_id, 
-        p.ivao_id, 
-        CONCAT(p.first_name, ' ', p.last_name) as display_name, 
-        p.foto_perfil,
+        p." . COL_VATSIM_ID . ", 
+        p." . COL_IVAO_ID . ", 
+        CONCAT(p." . COL_FIRST_NAME . ", ' ', p." . COL_LAST_NAME . ") as display_name, 
+        p." . COL_FOTO_PERFIL . ",
         COALESCE(SUM(v.time), 0) as total_seconds
     FROM 
-        " . DB_PILOTOS_NAME . ".Dados_dos_Pilotos p
+        " . DB_PILOTOS_NAME . "." . PILOTS_TABLE . " p
     LEFT JOIN 
-        " . DB_VOOS_NAME . ".voos v ON v.userId = p.vatsim_id OR v.userId = p.ivao_id
+        " . DB_VOOS_NAME . ".voos v ON v.userId = p." . COL_VATSIM_ID . " OR v.userId = p." . COL_IVAO_ID . "
     WHERE
-        p.validado = 'true'
+        p." . COL_VALIDADO . " = 'true'
     GROUP BY
-        p.id_piloto
+        p." . COL_ID_PILOTO . "
     ORDER BY
         display_name ASC
 ";
@@ -214,9 +214,9 @@ $top_pilots_sql = "
   FROM 
     ".DB_VOOS_NAME.".voos v
   JOIN 
-    ".DB_PILOTOS_NAME.".Dados_dos_Pilotos p ON v.userId = p.vatsim_id OR v.userId = p.ivao_id
+    ".DB_PILOTOS_NAME."." . PILOTS_TABLE . " p ON v.userId = p." . COL_VATSIM_ID . " OR v.userId = p." . COL_IVAO_ID . "
   WHERE 
-    p.validado = 'true'
+    p." . COL_VALIDADO . " = 'true'
   GROUP BY 
     v.userId 
   ORDER BY 

@@ -66,7 +66,7 @@ if (!$pilot_user_id) {
 
 $network_filter = $_GET['rede'] ?? 'geral'; 
 
-$stmt_piloto = $conn_pilotos->prepare("SELECT CONCAT(first_name, ' ', last_name) as display_name, foto_perfil, vatsim_id, ivao_id FROM Dados_dos_Pilotos WHERE vatsim_id = ? OR ivao_id = ?");
+$stmt_piloto = $conn_pilotos->prepare("SELECT CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name, " . COL_FOTO_PERFIL . ", " . COL_VATSIM_ID . ", " . COL_IVAO_ID . " FROM " . PILOTS_TABLE . " WHERE " . COL_VATSIM_ID . " = ? OR " . COL_IVAO_ID . " = ?");
 $stmt_piloto->bind_param("ss", $pilot_user_id, $pilot_user_id);
 $stmt_piloto->execute();
 $piloto_info = $stmt_piloto->get_result()->fetch_assoc();

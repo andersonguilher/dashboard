@@ -14,7 +14,25 @@ $lang_code = $settings['language'] ?? 'pt';
 $theme = $settings['theme'] ?? 'default';
 
 // ===================================
-// 2. CARREGAR IDIOMA
+// 2. DEFINIR MAPEAMENTOS DO BANCO DE DADOS COMO CONSTANTES GLOBAIS
+// ===================================
+$db_mappings = $settings['database_mappings'] ?? [];
+
+// Nomes padrão para garantir que a aplicação não quebre se a configuração estiver ausente
+define('PILOTS_TABLE', $db_mappings['pilots_table'] ?? 'Dados_dos_Pilotos');
+define('COL_ID_PILOTO', $db_mappings['columns']['id_piloto'] ?? 'id_piloto');
+define('COL_POST_ID', $db_mappings['columns']['post_id'] ?? 'post_id');
+define('COL_FIRST_NAME', $db_mappings['columns']['first_name'] ?? 'first_name');
+define('COL_LAST_NAME', $db_mappings['columns']['last_name'] ?? 'last_name');
+define('COL_VATSIM_ID', $db_mappings['columns']['vatsim_id'] ?? 'vatsim_id');
+define('COL_IVAO_ID', $db_mappings['columns']['ivao_id'] ?? 'ivao_id');
+define('COL_FOTO_PERFIL', $db_mappings['columns']['foto_perfil'] ?? 'foto_perfil');
+define('COL_VALIDADO', $db_mappings['columns']['validado'] ?? 'validado');
+define('COL_MATRICULA', $db_mappings['columns']['matricula'] ?? 'matricula');
+
+
+// ===================================
+// 3. CARREGAR IDIOMA
 // ===================================
 $lang_file = __DIR__ . '/../config/lang/' . $lang_code . '.php';
 
@@ -32,20 +50,13 @@ function t($key) {
 }
 
 // ===================================
-// 3. APLICAR TEMA DE CORES GLOBAL
+// 4. APLICAR TEMA DE CORES GLOBAL
 // ===================================
 function apply_color_theme() {
     global $theme; // Usa a variável global $theme lida do arquivo JSON
     $css_vars = '';
 
     switch ($theme) {
-        case 'default':
-            $css_vars = "
-                --background-color: #f0f2f5; --card-background-color: #ffffff; --text-color: #333333;
-                --text-color-light: #666666; --border-color: #e0e0e0; --primary-color: #0d6efd;
-                --primary-color-dark: #0a58ca;
-            ";
-            break;
         case 'dark':
             $css_vars = "
                 --background-color: #1c1c1e; --card-background-color: #2c2c2e; --text-color: #f0f0f0;
@@ -67,8 +78,7 @@ function apply_color_theme() {
                 --primary-color-dark: #b02a37;
             ";
             break;
-        default:
-            // Se o tema não for reconhecido, aplica o 'default'
+        default: // 'default'
              $css_vars = "
                 --background-color: #f0f2f5; --card-background-color: #ffffff; --text-color: #333333;
                 --text-color-light: #666666; --border-color: #e0e0e0; --primary-color: #0d6efd;
@@ -77,6 +87,5 @@ function apply_color_theme() {
             break;
     }
 
-    // Retorna o bloco de estilo para ser inserido no <head>
     echo "<style>:root { " . $css_vars . " }</style>";
 }
