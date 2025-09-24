@@ -762,6 +762,19 @@ $conn_voos->close();
         }, 300);
     }
 
+    function hexToRgba(hex, alpha) {
+        // Remove o # se existir
+        hex = hex.replace('#', '');
+        // Converte 3 dígitos para 6 dígitos
+        if (hex.length === 3) {
+            hex = hex.split('').map(h => h + h).join('');
+        }
+        const r = parseInt(hex.substring(0,2), 16);
+        const g = parseInt(hex.substring(2,4), 16);
+        const b = parseInt(hex.substring(4,6), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+
     window.addEventListener('DOMContentLoaded', (event) => {
         const tableRows = document.querySelectorAll('.vuelos-realizados tbody tr');
         tableRows.forEach(row => {
@@ -792,39 +805,178 @@ $conn_voos->close();
           plugins: { legend: { labels: { color: chartTextColor, boxWidth: 10, font: { size: 11 } } } }
         };
 
+        const todayIndexMonth = new Date().getDate() - 1; // -1 porque labels começa em 0
+
         new Chart(document.getElementById('graficoHorasMes'), {
-          type: 'line',
-          data: {
-            labels: <?= json_encode($chart_labels_dias_mes) ?>,
-            datasets: [{
-                label: '<?= t('current_month') ?>',
-                data: <?= json_encode($chart_data_horas_mes_actual) ?>,
-                borderColor: primaryColor, tension: 0.3, pointRadius: 0, borderWidth: 2
-              },{
-                label: '<?= t('previous_month') ?>',
-                data: <?= json_encode($chart_data_horas_mes_anterior) ?>,
-                borderColor: secondaryColor, tension: 0.3, pointRadius: 0, borderWidth: 2
-              }]
-          },
-          options: { ...defaultChartOptions, plugins: { legend: { display: true, position: 'top', align: 'end' } } }
+            type: 'line',
+            data: {
+                labels: <?= json_encode($chart_labels_dias_mes) ?>,
+                datasets: [{
+                    label: '<?= t('current_month') ?>',
+                    data: <?= json_encode($chart_data_horas_mes_actual) ?>,
+                    borderColor: primaryColor,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2
+                },{
+                    label: '<?= t('previous_month') ?>',
+                    data: <?= json_encode($chart_data_horas_mes_anterior) ?>,
+                    borderColor: secondaryColor,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                ...defaultChartOptions,
+                plugins: {
+                    legend: { display: true, position: 'top', align: 'end' }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: function(context) {
+                                return context.index === todayIndexMonth ? primaryColor : chartTextColor;
+                            },
+                            font: function(context) {
+                                return {
+                                    weight: context.index === todayIndexMonth ? 'bold' : 'normal',
+                                    size: 12
+                                };
+                            }
+                        },
+                        grid: {
+                            display: true,
+                            color: function(context) {
+                                if (context.index === todayIndexMonth) {
+                                    return hexToRgba(primaryColor, 0.05); // linha base quase transparente
+                                }
+                                return '#e0e0e0'; // linhas dos outros dias
+                            },
+                            borderColor: '#ccc',
+                            drawTicks: false
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: '#e0e0e0'
+                        }
+                    }
+                }
+            },
+            plugins: [
+                {
+                    beforeDraw: (chart) => {
+                        const ctx = chart.ctx;
+                        const xScale = chart.scales.x;
+                        const yScale = chart.scales.y;
+                        const x = xScale.getPixelForTick(todayIndexMonth);
+
+                        ctx.save();
+                        ctx.strokeStyle = hexToRgba(primaryColor, 0.2); // traço principal com opacidade
+                        ctx.lineWidth = 2;
+                        ctx.shadowColor = primaryColor;   // cor do glow
+                        ctx.shadowBlur = 10;              // intensidade do glow
+                        ctx.beginPath();
+                        ctx.moveTo(x, yScale.top);
+                        ctx.lineTo(x, yScale.bottom);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            ]
         });
 
+        const todayIndex = new Date().getDay(); // 0 = Domingo, 1 = Segunda ... 6 = Sábado
+
+        function hexToRgba(hex, alpha) {
+            hex = hex.replace('#','');
+            if (hex.length === 3) hex = hex.split('').map(h => h+h).join('');
+            const r = parseInt(hex.substring(0,2),16);
+            const g = parseInt(hex.substring(2,4),16);
+            const b = parseInt(hex.substring(4,6),16);
+            return `rgba(${r},${g},${b},${alpha})`;
+        }
+
         new Chart(document.getElementById('graficoHorasDiaSemana'), {
-          type: 'line',
-          data: {
-            labels: <?= json_encode($chart_labels_dias_semana) ?>,
-            datasets: [{
-                label: '<?= t('current_week') ?>',
-                data: <?= json_encode($chart_data_horas_semana_atual_corrigido) ?>,
-                borderColor: primaryColor, tension: 0.3, borderWidth: 2
-              },{
-                label: '<?= t('previous_week') ?>',
-                data: <?= json_encode($chart_data_horas_semana_anterior_corrigido) ?>,
-                borderColor: secondaryColor, tension: 0.3, borderDash: [5, 5], borderWidth: 2
-              }]
-          },
-          options: { ...defaultChartOptions, plugins: { legend: { display: true, position: 'top', align: 'end' } } }
+            type: 'line',
+            data: {
+                labels: <?= json_encode($chart_labels_dias_semana) ?>,
+                datasets: [{
+                    label: '<?= t('current_week') ?>',
+                    data: <?= json_encode($chart_data_horas_semana_atual_corrigido) ?>,
+                    borderColor: primaryColor,
+                    tension: 0.3,
+                    borderWidth: 2
+                },{
+                    label: '<?= t('previous_week') ?>',
+                    data: <?= json_encode($chart_data_horas_semana_anterior_corrigido) ?>,
+                    borderColor: secondaryColor,
+                    tension: 0.3,
+                    borderDash: [5,5],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                ...defaultChartOptions,
+                plugins: {
+                    legend: { display: true, position: 'top', align: 'end' }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: function(context) {
+                                return context.index === todayIndex ? primaryColor : '#666';
+                            },
+                            font: function(context) {
+                                return {
+                                    weight: context.index === todayIndex ? 'bold' : 'normal',
+                                    size: 12
+                                };
+                            }
+                        },
+                        grid: {
+                            display: true,
+                            color: function(context) {
+                                if (context.index === todayIndex) {
+                                    return hexToRgba(primaryColor, 0.05); // linha base quase transparente
+                                }
+                                return '#e0e0e0'; // linhas dos outros dias
+                            },
+                            borderColor: '#ccc',
+                            drawTicks: false
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: '#e0e0e0'
+                        }
+                    }
+                }
+            },
+            plugins: [
+                {
+                    beforeDraw: (chart) => {
+                        const ctx = chart.ctx;
+                        const xScale = chart.scales.x;
+                        const yScale = chart.scales.y;
+                        const x = xScale.getPixelForTick(todayIndex);
+
+                        ctx.save();
+                        ctx.strokeStyle = hexToRgba(primaryColor, 0.2); // traço principal com opacidade
+                        ctx.lineWidth = 2;
+                        ctx.shadowColor = primaryColor;   // cor do glow
+                        ctx.shadowBlur = 10;              // intensidade do glow
+                        ctx.beginPath();
+                        ctx.moveTo(x, yScale.top);
+                        ctx.lineTo(x, yScale.bottom);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            ]
         });
+
 
         new Chart(document.getElementById('graficoVuelosDiarios'), {
           type: 'bar',
