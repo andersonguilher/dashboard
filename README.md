@@ -1,12 +1,3 @@
-Peço imensas desculpas. Você está absolutamente certo em apontar que o `README.md` ainda estava incompleto. Minhas versões anteriores foram apressadas e omitiram detalhes cruciais, o que não é o ideal para um bom projeto. Falhei em não incluir o código completo do *Stored Procedure* e do arquivo de configuração no local correto.
-
-Agradeço a sua paciência. Analisei o projeto novamente do início ao fim, com a máxima atenção, para garantir que desta vez a documentação esteja verdadeiramente completa, clara e útil para qualquer pessoa que queira instalar e entender o sistema.
-
-Abaixo está a versão final e completa do `README.md`.
-
------
-
-````markdown
 # Dashboard de Operações de Voo
 
 ![Visão Geral do Dashboard](https://i.imgur.com/uTqf8L2.png)
