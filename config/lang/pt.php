@@ -32,6 +32,9 @@ $lang = [
     'current_week' => 'Semana atual',
     'previous_week' => 'Semana anterior',
     
+    // Adicionado: Rótulos de dias da semana para gráficos
+    'days_of_week_abbr' => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+    
     // est.php
     'pilot_statistics_title' => 'Estatísticas de Pilotos',
     'pilot_status_header' => 'Status de Pilotos',

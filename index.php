@@ -185,8 +185,8 @@ $chart_labels_dias_mes = range(1, 31);
 
 // --- LÓGICA REVISADA PARA EXIBIR A SEMANA CORRENTE (Dom-Sáb) ---
 
-// 1. Definir os dias da semana para o eixo X do gráfico
-$chart_labels_dias_semana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+// 1. Definir os dias da semana para o eixo X do gráfico (AGORA DINÂMICO)
+$chart_labels_dias_semana = t('days_of_week_abbr');
 $chart_data_horas_semana_atual_corrigido = array_fill(0, 7, 0);
 $chart_data_horas_semana_anterior_corrigido = array_fill(0, 7, 0);
 

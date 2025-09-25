@@ -1,6 +1,6 @@
 {
-    "theme": "red",
-    "language": "pt",
+    "theme": "default",
+    "language": "es",
     "database_mappings": {
         "pilots_table": "Dados_dos_Pilotos",
         "columns": {
