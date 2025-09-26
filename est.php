@@ -19,14 +19,25 @@ $status_class = '';
 if (isset($_GET['status'])) {
     if ($_GET['status'] === 'success' && isset($_GET['pilot_name'])) {
         $pilot_name = htmlspecialchars(urldecode($_GET['pilot_name']));
-        // Usa sprintf para inserir o nome na string traduzida
-        $status_message = sprintf(t('pilot_disabled_success'), "<strong>" . $pilot_name . "</strong>");
+        
+        // --- INÍCIO DA ALTERAÇÃO ---
+        // Verifica se o parâmetro 'email_sent' existe e é igual a 1
+        if (isset($_GET['email_sent']) && $_GET['email_sent'] == 1) {
+            // Usa a nova chave de tradução que menciona o e-mail
+            $status_message = sprintf(t('pilot_disabled_success_email_sent'), "<strong>" . $pilot_name . "</strong>");
+        } else {
+            // Caso contrário, usa a mensagem de sucesso padrão
+            $status_message = sprintf(t('pilot_disabled_success'), "<strong>" . $pilot_name . "</strong>");
+        }
+        // --- FIM DA ALTERAÇÃO ---
+
         $status_class = 'message-success';
     } elseif ($_GET['status'] === 'error') {
         $status_message = 'Erro: ' . htmlspecialchars($_GET['message']);
         $status_class = 'message-error';
     }
 }
+
 
 // =================================================================
 // 2. LÓGICA PHP

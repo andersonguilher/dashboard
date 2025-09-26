@@ -1,6 +1,7 @@
 {
     "theme": "default",
     "language": "pt",
+    "company_name": "Kafly",
     "database_mappings": {
         "pilots_table": "Dados_dos_Pilotos",
         "columns": {

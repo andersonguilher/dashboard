@@ -14,13 +14,14 @@ if (!file_exists($settings_file)) {
     $default_settings = json_encode([
         'theme' => 'default',
         'language' => 'pt',
+        'company_name' => 'KAflying Virtual',
         'database_mappings' => [
             'pilots_table' => 'Dados_dos_Pilotos',
             'columns' => [
                 'post_id' => 'post_id', 'first_name' => 'first_name', 'last_name' => 'last_name',
                 'vatsim_id' => 'vatsim_id', 'ivao_id' => 'ivao_id', 'foto_perfil' => 'foto_perfil',
                 'validado' => 'validado', 'matricula' => 'matricula', 'id_piloto' => 'id_piloto',
-                'email_piloto' => 'email_piloto' // Adicionado novo campo
+                'email_piloto' => 'email_piloto'
             ]
         ]
     ], JSON_PRETTY_PRINT);
@@ -38,12 +39,12 @@ if (empty($error_message) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     // Atualiza configurações gerais
     $current_settings['language'] = $_POST['language'] ?? 'pt';
     $current_settings['theme'] = $_POST['theme'] ?? 'default';
+    $current_settings['company_name'] = $_POST['company_name'] ?? 'KAflying Virtual'; // Adicionado
 
     // Atualiza mapeamentos do banco de dados
     if (isset($_POST['db_mappings'])) {
         $current_settings['database_mappings']['pilots_table'] = trim($_POST['db_mappings']['pilots_table']);
         foreach ($_POST['db_mappings']['columns'] as $key => $value) {
-            // Garante que a chave exista antes de atribuir
             if (array_key_exists($key, $current_settings['database_mappings']['columns'])) {
                  $current_settings['database_mappings']['columns'][$key] = trim($value);
             }
@@ -54,7 +55,6 @@ if (empty($error_message) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (file_put_contents($settings_file, json_encode($current_settings, JSON_PRETTY_PRINT)) === false) {
         $error_message = "<strong>Falha ao Salvar:</strong> Ocorreu um erro desconhecido ao tentar escrever no arquivo <code>settings.json</code>.";
     } else {
-        // Redireciona para evitar reenvio do formulário
         header('Location: index.php?status=success');
         exit;
     }
@@ -69,7 +69,6 @@ $current_lang = $settings['language'] ?? 'pt';
 $current_theme = $settings['theme'] ?? 'default';
 $db_mappings = $settings['database_mappings'] ?? [];
 
-// Verifica se a página foi redirecionada com sucesso
 if (isset($_GET['status']) && $_GET['status'] === 'success') {
     $success_message = 'Configurações salvas com sucesso!';
 }
@@ -101,27 +100,13 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
         .message-box { text-align: center; padding: 15px; border-radius: 5px; margin-bottom: 20px; word-wrap: break-word; }
         .message-success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
         .message-error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-        .back-link {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            text-decoration: none;
-            color: #555;
-            background-color: #f0f2f5;
-            padding: 8px 12px;
-            border-radius: 5px;
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-        .back-link:hover {
-            background-color: #e2e6ea;
-        }
+        .back-link { position: absolute; top: 20px; left: 20px; text-decoration: none; color: #555; background-color: #f0f2f5; padding: 8px 12px; border-radius: 5px; font-weight: 500; transition: background-color 0.2s; }
+        .back-link:hover { background-color: #e2e6ea; }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="../index.php" class="back-link">&larr; Voltar ao Dashboard</a>
-
         <h1>Painel de Controle Global</h1>
         
         <?php if (!empty($error_message)): ?>
@@ -134,7 +119,10 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
 
         <form action="index.php" method="POST">
             <h2>Configurações Gerais</h2>
-            <!-- INÍCIO DA SEÇÃO CORRIGIDA -->
+            <div class="form-group">
+                <label for="company_name">Nome da Companhia Aérea</label>
+                <input type="text" name="company_name" id="company_name" value="<?= htmlspecialchars($settings['company_name'] ?? 'KAflying Virtual') ?>" <?= !empty($error_message) ? 'disabled' : '' ?>>
+            </div>
             <div class="form-grid">
                 <div class="form-grid-item">
                     <label for="language">Idioma Global</label>
@@ -153,7 +141,6 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
                     </div>
                 </div>
             </div>
-            <!-- FIM DA SEÇÃO CORRIGIDA -->
 
             <h2>Mapeamento da Tabela de Pilotos</h2>
             <div class="form-group">
@@ -162,11 +149,10 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
             </div>
             <div class="form-grid">
                 <?php 
-                // Array de colunas a serem exibidas no formulário
                 $columns = [
                     'id_piloto' => 'ID Único do Piloto', 'post_id' => 'ID (Post)', 'first_name' => 'Primeiro Nome', 'last_name' => 'Último Nome', 
                     'vatsim_id' => 'ID Vatsim', 'ivao_id' => 'ID Ivao', 'foto_perfil' => 'Foto de Perfil', 'validado' => 'Coluna de Validação', 
-                    'matricula' => 'Matrícula/Callsign', 'email_piloto' => 'E-mail do Piloto' // Novo Campo
+                    'matricula' => 'Matrícula/Callsign', 'email_piloto' => 'E-mail do Piloto'
                 ];
                 foreach ($columns as $key => $label):
                 ?>

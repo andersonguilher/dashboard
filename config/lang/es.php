@@ -60,14 +60,15 @@ $lang = [
     'select_pilot_placeholder' => 'Seleccione un piloto del menú o use los filtros para comenzar.',
     'registered_on_days' => 'Registrado el %s (hace %d días)',
     'pilot_disabled_success' => '¡El piloto %s ha sido deshabilitado con éxito!',
+    'pilot_disabled_success_email_sent' => '¡El piloto %s ha sido deshabilitado con éxito! Se ha enviado una notificación a su correo electrónico.',
     'disable_confirmation_title' => 'Confirmar Acción',
     'disable_confirmation_text' => '¿Está seguro de que desea deshabilitar al piloto %s? Esta acción no se puede deshacer fácilmente.',
     'confirm_button' => 'Confirmar',
     'cancel_button' => 'Cancelar',
     
     // Textos del Email
-    'disable_email_subject' => 'Notificación de Estado de Cuenta',
-    'disable_email_body' => "Hola, %s.\n\nLe informamos que su cuenta de piloto ha sido deshabilitada en nuestro sistema por inactividad. Para más detalles o para solicitar la reactivación, por favor, contacte a la administración.\n\nAtentamente,\nEl Equipo de la KAflying Virtual",
+    'disable_email_subject' => 'Notificación de inactividad',
+    'disable_email_body' => "Hola, %s.\n\nLe informamos que su cuenta de piloto ha sido deshabilitada en nuestro sistema por inactividad. Para más detalles o para solicitar la reactivación, por favor, contacte a la administración.\n\nAtentamente,\nEl Equipo de %s",
 
     // estatisticas_piloto.php
     'stats_for_pilot_title' => 'Estadísticas de ',
