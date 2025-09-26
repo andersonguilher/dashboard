@@ -1,6 +1,6 @@
 <?php
 // =================================================================
-// 0. CARREGAR CONFIGURAÇÕES DE IDIOMA E TEMA
+// 0. CARREGAR CONFIGURAÇÕES DE IDIoma E TEMA
 // =================================================================
 require_once __DIR__ . '/src/config_loader.php';
 
@@ -22,11 +22,18 @@ $alert_list_pilots = [];
 
 if (isset($_GET['filtro']) && $_GET['filtro'] === 'ativos_em_alerta') {
     $show_alert_list = true;
+    // CORREÇÃO: Usa as constantes do config_loader e adiciona a data de inscrição
     $alert_sql = "
-        SELECT p.post_id as ID, CONCAT(p.first_name, ' ', p.last_name) as display_name, p.foto_perfil, MAX(v.createdAt) as last_flight_date
-        FROM ".DB_PILOTOS_NAME.".Dados_dos_Pilotos p
-        LEFT JOIN ".DB_VOOS_NAME.".voos v ON v.userId IN (p.vatsim_id, p.ivao_id)
-        WHERE p.validado = 'true' GROUP BY p.post_id, display_name, p.foto_perfil
+        SELECT 
+            p." . COL_POST_ID . " as ID, 
+            CONCAT(p." . COL_FIRST_NAME . ", ' ', p." . COL_LAST_NAME . ") as display_name, 
+            p." . COL_FOTO_PERFIL . ",
+            p.post_date_gmt, -- Adicionando a data de inscrição
+            MAX(v.createdAt) as last_flight_date
+        FROM " . DB_PILOTOS_NAME . "." . PILOTS_TABLE . " p
+        LEFT JOIN " . DB_VOOS_NAME . ".voos v ON v.userId IN (p." . COL_VATSIM_ID . ", p." . COL_IVAO_ID . ")
+        WHERE p." . COL_VALIDADO . " = 'true' 
+        GROUP BY p." . COL_POST_ID . ", display_name, p." . COL_FOTO_PERFIL . ", p.post_date_gmt -- Adicionando ao GROUP BY
         HAVING last_flight_date < DATE_SUB(NOW(), INTERVAL 15 DAY) OR last_flight_date IS NULL
         ORDER BY last_flight_date ASC, display_name ASC;
     ";
@@ -44,8 +51,8 @@ if (isset($_GET['filtro']) && $_GET['filtro'] === 'ativos_em_alerta') {
     $stmt_piloto->close();
 
     if ($pilot_data) {
-        $vatsim_id = $pilot_data['vatsim_id'] ?? null;
-        $ivao_id = $pilot_data['ivao_id'] ?? null;
+        $vatsim_id = $pilot_data[COL_VATSIM_ID] ?? null;
+        $ivao_id = $pilot_data[COL_IVAO_ID] ?? null;
         $stats = [];
         function format_seconds($seconds) {
             if (!$seconds || $seconds <= 0) return '00:00';
@@ -99,7 +106,15 @@ if (isset($_GET['filtro']) && $_GET['filtro'] === 'ativos_em_alerta') {
     }
 }
 
-$pilotos_sql = "SELECT post_id as ID, CONCAT(first_name, ' ', last_name) as display_name FROM Dados_dos_Pilotos WHERE first_name IS NOT NULL AND first_name != '' ORDER BY display_name ASC";
+// CORREÇÃO: Usa as constantes do config_loader para a tabela e colunas
+$pilotos_sql = "
+    SELECT 
+        " . COL_POST_ID . " as ID, 
+        CONCAT(" . COL_FIRST_NAME . ", ' ', " . COL_LAST_NAME . ") as display_name 
+    FROM " . PILOTS_TABLE . " 
+    WHERE " . COL_FIRST_NAME . " IS NOT NULL AND " . COL_FIRST_NAME . " != '' 
+    ORDER BY display_name ASC
+";
 $pilotos_result = $conn_pilotos->query($pilotos_sql);
 
 $conn_pilotos->close();
@@ -198,14 +213,14 @@ $conn_voos->close();
         </div>
         <?php if ($show_pilot_stats && $pilot_data): ?>
             <div class="pilot-profile">
-                <img src="<?= htmlspecialchars($pilot_data['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto de Perfil">
+                <img src="<?= htmlspecialchars($pilot_data[COL_FOTO_PERFIL] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto de Perfil">
                 <div class="pilot-info">
                     <h2><?= htmlspecialchars($pilot_data['display_name']) ?></h2>
                     <div class="pilot-meta">
-                        <div class="callsign"><?= htmlspecialchars($pilot_data['matricula'] ?? t('not_available_abbr')) ?></div>
+                        <div class="callsign"><?= htmlspecialchars($pilot_data[COL_MATRICULA] ?? t('not_available_abbr')) ?></div>
                         <?php 
-                            $status_class = ($pilot_data['validado'] === 'true') ? 'status-ativo' : 'status-inativo'; 
-                            $status_text = ($pilot_data['validado'] === 'true') ? t('status_active') : t('status_inactive'); 
+                            $status_class = ($pilot_data[COL_VALIDADO] === 'true') ? 'status-ativo' : 'status-inativo'; 
+                            $status_text = ($pilot_data[COL_VALIDADO] === 'true') ? t('status_active') : t('status_inactive'); 
                         ?>
                         <span class="status-badge <?= $status_class ?>"><?= $status_text ?></span>
                     </div>
@@ -259,10 +274,16 @@ $conn_voos->close();
                         ?>
                         <li class="<?= $li_class ?>">
                             <a href="?pilot_id=<?= htmlspecialchars($pilot['ID']) ?>">
-                                <img src="<?= htmlspecialchars($pilot['foto_perfil'] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto">
+                                <img src="<?= htmlspecialchars($pilot[COL_FOTO_PERFIL] ?? 'piloto.png') ?>" onerror="this.onerror=null; this.src='assets/images/piloto.png';" alt="Foto">
                                 <div>
                                     <div class="pilot-name"><?= htmlspecialchars($pilot['display_name']) ?></div>
-                                    <div class="last-flight"><strong><i class="fa-solid fa-triangle-exclamation"></i> <?= $status_text ?></strong></div>
+                                    <?php if (!empty($pilot['post_date_gmt'])): ?>
+                                        <div class="registration-date" style="font-size: 0.8em; color: #6c757d; margin-top: 4px;">
+                                            <i class="fa-solid fa-calendar-alt"></i> 
+                                            <?= t('registered_on') ?>: <?= (new DateTime($pilot['post_date_gmt']))->format('d/m/Y') ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="last-flight" style="margin-top: 4px;"><strong><i class="fa-solid fa-triangle-exclamation"></i> <?= $status_text ?></strong></div>
                                 </div>
                             </a>
                         </li>

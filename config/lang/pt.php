@@ -58,6 +58,7 @@ $lang = [
     'status_inactive_for_days' => 'Inativo há %d dias',
     'no_pilots_on_alert' => 'Nenhum piloto ativo está em alerta de inatividade.',
     'select_pilot_placeholder' => 'Selecione um piloto no menu ou use os filtros para começar.',
+    'registered_on' => 'Registrado em', // <-- CORRIGIDO
 
     // estatisticas_piloto.php
     'stats_for_pilot_title' => 'Estatísticas de ',
