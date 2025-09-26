@@ -29,7 +29,7 @@ define('COL_IVAO_ID', $db_mappings['columns']['ivao_id'] ?? 'ivao_id');
 define('COL_FOTO_PERFIL', $db_mappings['columns']['foto_perfil'] ?? 'foto_perfil');
 define('COL_VALIDADO', $db_mappings['columns']['validado'] ?? 'validado');
 define('COL_MATRICULA', $db_mappings['columns']['matricula'] ?? 'matricula');
-
+define('COL_EMAIL_PILOTO', $db_mappings['columns']['email_piloto'] ?? 'email_piloto'); // NOVA CONSTANTE
 
 // ===================================
 // 3. CARREGAR IDIOMA

@@ -37,13 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pilot_id']) && isset(
                 if ($pilot_email && filter_var($pilot_email, FILTER_VALIDATE_EMAIL)) {
                     $to      = $pilot_email;
                     $subject = t('disable_email_subject');
+                    // Usa o e-mail da companhia e o nome da companhia do settings.json
                     $company_name_from_settings = $settings['company_name'] ?? 'Sua Companhia Aérea Virtual';
+                    $from_email = $settings['company_email'] ?? 'contato@kafly.com.br';
                     $message = sprintf(t('disable_email_body'), $pilot_name, $company_name_from_settings);
-                    
-                    $from_email = "contato@kafly.com.br";
-                    $domain_part = substr(strrchr($from_email, "@"), 1);
-                    $company_name = strtok($domain_part, '.');
-                    $display_name = strtoupper($company_name);
+
+                    $display_name = $company_name_from_settings;
 
                     $headers  = "MIME-Version: 1.0" . "\r\n";
                     $headers .= "Content-type: text/plain; charset=UTF-8" . "\r\n";
@@ -57,8 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pilot_id']) && isset(
                 $stmt_disable->close();
                 $conn_pilotos->close();
                 
-                // --- ALTERAÇÃO AQUI ---
-                // Adiciona o flag &email_sent=1 ou &email_sent=0 ao redirecionamento
                 $success_msg = urlencode($pilot_name);
                 header('Location: ../est.php?filtro=ativos_em_alerta&status=success&pilot_name=' . $success_msg . '&email_sent=' . $email_sent_flag);
                 exit;

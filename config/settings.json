@@ -2,6 +2,7 @@
     "theme": "default",
     "language": "pt",
     "company_name": "Kafly",
+    "company_email": "contato@kafly.com.br",
     "database_mappings": {
         "pilots_table": "Dados_dos_Pilotos",
         "columns": {
