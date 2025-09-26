@@ -12,14 +12,15 @@ $success_message = '';
 if (!file_exists($settings_file)) {
     // Tenta criar o arquivo com valores padrão se ele não existir
     $default_settings = json_encode([
-        'theme' => 'default', 
+        'theme' => 'default',
         'language' => 'pt',
         'database_mappings' => [
             'pilots_table' => 'Dados_dos_Pilotos',
             'columns' => [
                 'post_id' => 'post_id', 'first_name' => 'first_name', 'last_name' => 'last_name',
                 'vatsim_id' => 'vatsim_id', 'ivao_id' => 'ivao_id', 'foto_perfil' => 'foto_perfil',
-                'validado' => 'validado', 'matricula' => 'matricula', 'id_piloto' => 'id_piloto'
+                'validado' => 'validado', 'matricula' => 'matricula', 'id_piloto' => 'id_piloto',
+                'email_piloto' => 'email_piloto' // Adicionado novo campo
             ]
         ]
     ], JSON_PRETTY_PRINT);
@@ -42,7 +43,10 @@ if (empty($error_message) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['db_mappings'])) {
         $current_settings['database_mappings']['pilots_table'] = trim($_POST['db_mappings']['pilots_table']);
         foreach ($_POST['db_mappings']['columns'] as $key => $value) {
-            $current_settings['database_mappings']['columns'][$key] = trim($value);
+            // Garante que a chave exista antes de atribuir
+            if (array_key_exists($key, $current_settings['database_mappings']['columns'])) {
+                 $current_settings['database_mappings']['columns'][$key] = trim($value);
+            }
         }
     }
 
@@ -74,12 +78,12 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
 <html lang="<?= htmlspecialchars($current_lang) ?>">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configurações Globais do Site</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Roboto', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: auto; background-color: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; /* Adicionado para o posicionamento do botão */ }
+        .container { max-width: 800px; margin: auto; background-color: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); position: relative; }
         h1, h2 { color: #1e3a5f; text-align: center; }
         h2 { font-size: 1.2em; border-top: 1px solid #eee; padding-top: 25px; margin-top: 30px; }
         .form-group, .form-grid-item { margin-bottom: 20px; }
@@ -97,8 +101,6 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
         .message-box { text-align: center; padding: 15px; border-radius: 5px; margin-bottom: 20px; word-wrap: break-word; }
         .message-success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
         .message-error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-        
-        /* == ESTILO ADICIONADO PARA O BOTÃO DE VOLTAR == */
         .back-link {
             position: absolute;
             top: 20px;
@@ -132,6 +134,7 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
 
         <form action="index.php" method="POST">
             <h2>Configurações Gerais</h2>
+            <!-- INÍCIO DA SEÇÃO CORRIGIDA -->
             <div class="form-grid">
                 <div class="form-grid-item">
                     <label for="language">Idioma Global</label>
@@ -150,6 +153,7 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
                     </div>
                 </div>
             </div>
+            <!-- FIM DA SEÇÃO CORRIGIDA -->
 
             <h2>Mapeamento da Tabela de Pilotos</h2>
             <div class="form-group">
@@ -158,7 +162,12 @@ if (isset($_GET['status']) && $_GET['status'] === 'success') {
             </div>
             <div class="form-grid">
                 <?php 
-                $columns = ['id_piloto' => 'ID Único do Piloto', 'post_id' => 'ID (Post)', 'first_name' => 'Primeiro Nome', 'last_name' => 'Último Nome', 'vatsim_id' => 'ID Vatsim', 'ivao_id' => 'ID Ivao', 'foto_perfil' => 'Foto de Perfil', 'validado' => 'Coluna de Validação', 'matricula' => 'Matrícula/Callsign'];
+                // Array de colunas a serem exibidas no formulário
+                $columns = [
+                    'id_piloto' => 'ID Único do Piloto', 'post_id' => 'ID (Post)', 'first_name' => 'Primeiro Nome', 'last_name' => 'Último Nome', 
+                    'vatsim_id' => 'ID Vatsim', 'ivao_id' => 'ID Ivao', 'foto_perfil' => 'Foto de Perfil', 'validado' => 'Coluna de Validação', 
+                    'matricula' => 'Matrícula/Callsign', 'email_piloto' => 'E-mail do Piloto' // Novo Campo
+                ];
                 foreach ($columns as $key => $label):
                 ?>
                 <div class="form-grid-item">

@@ -32,7 +32,7 @@ $lang = [
     'current_week' => 'Semana atual',
     'previous_week' => 'Semana anterior',
     
-    // Adicionado: Rótulos de dias da semana para gráficos
+    // Rótulos de dias da semana para gráficos
     'days_of_week_abbr' => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
     
     // est.php
@@ -53,12 +53,21 @@ $lang = [
     'no_flight_recorded' => 'Nenhum voo registrado',
     'last_flight_details' => 'De %s para %s em %s',
     'active_pilots_on_alert' => 'Pilotos Ativos em Alerta',
-    'pilots_on_alert_description' => 'Pilotos que não registram voos há mais de 15 dias.',
+    'pilots_on_alert_description' => 'Pilotos registrados há mais de 29 dias e que não voam há mais de 15 dias.',
     'status_never_flew' => 'Nunca voou',
     'status_inactive_for_days' => 'Inativo há %d dias',
     'no_pilots_on_alert' => 'Nenhum piloto ativo está em alerta de inatividade.',
     'select_pilot_placeholder' => 'Selecione um piloto no menu ou use os filtros para começar.',
-    'registered_on' => 'Registrado em', // <-- CORRIGIDO
+    'registered_on_days' => 'Registrado em %s (há %d dias)',
+    'pilot_disabled_success' => 'O piloto %s foi desabilitado com sucesso!',
+    'disable_confirmation_title' => 'Confirmar Ação',
+    'disable_confirmation_text' => 'Tem certeza que deseja desabilitar o piloto %s? Esta ação não pode ser desfeita facilmente.',
+    'confirm_button' => 'Confirmar',
+    'cancel_button' => 'Cancelar',
+
+    // Textos do E-mail
+    'disable_email_subject' => 'Notificação de Status de Conta',
+    'disable_email_body' => "Olá, %s.\n\nInformamos que sua conta de piloto foi desabilitada em nosso sistema por inatividade. Para mais detalhes ou para solicitar a reativação, por favor, entre em contato com a administração.\n\nAtenciosamente,\nEquipe da KAflying Virtual",
 
     // estatisticas_piloto.php
     'stats_for_pilot_title' => 'Estatísticas de ',

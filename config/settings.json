@@ -1,9 +1,10 @@
 {
     "theme": "default",
-    "language": "es",
+    "language": "pt",
     "database_mappings": {
         "pilots_table": "Dados_dos_Pilotos",
         "columns": {
+            "id_piloto": "id_piloto",
             "post_id": "post_id",
             "first_name": "first_name",
             "last_name": "last_name",
@@ -12,7 +13,7 @@
             "foto_perfil": "foto_perfil",
             "validado": "validado",
             "matricula": "matricula",
-            "id_piloto": "id_piloto"
+            "email_piloto": "_email_contato"
         }
     }
 }
