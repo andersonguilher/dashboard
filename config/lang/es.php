@@ -65,6 +65,7 @@ $lang = [
     'disable_confirmation_text' => '¿Está seguro de que desea deshabilitar al piloto %s? Esta acción no se puede deshacer fácilmente.',
     'confirm_button' => 'Confirmar',
     'cancel_button' => 'Cancelar',
+    'disable_button' => 'Desactivar',
     
     // Textos del Email
     'disable_email_subject' => 'Notificación de inactividad',

@@ -484,8 +484,8 @@ $conn_voos->close();
                                 <form action="src/disable_pilot.php" method="POST" class="disable-form">
                                     <input type="hidden" name="pilot_id" value="<?= htmlspecialchars($pilot['ID']) ?>">
                                     <input type="hidden" name="pilot_name" value="<?= htmlspecialchars($pilot['display_name']) ?>">
-                                    <button type="submit" class="btn-disable" title="Desabilitar Piloto">
-                                        <i class="fa-solid fa-user-slash"></i> Desabilitar
+                                    <button type="submit" class="btn-disable" title="<?= t('disable_button') ?>">
+                                        <i class="fa-solid fa-user-slash"></i> <?= t('disable_button') ?>
                                     </button>
                                 </form>
                             </div>
