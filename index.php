@@ -170,7 +170,7 @@ $db_name = DB_VOOS_NAME;
 $query_template = "
     SELECT 
         t1.userId, 
-        AVG(t1.landing_vs) as avg_landing_vs_signed,
+        MAX(t1.landing_vs) as best_landing_vs_signed, /* CORREÇÃO AQUI: MAX para pegar o valor negativo mais próximo de zero */
         ? as category_code,
         (
             SELECT t2.flightPlan_aircraft_model
@@ -194,7 +194,7 @@ $query_template = "
     HAVING
         COUNT(*) >= 1 
     ORDER BY 
-        avg_landing_vs_signed DESC
+        best_landing_vs_signed DESC /* Usamos MAX para selecionar o melhor pouso */
     LIMIT 1
 ";
 
@@ -740,7 +740,7 @@ $conn_voos->close();
                 $category_code = $pilot['category_code'];
                 
                 // 1. Obtém os valores de pouso e aeronave
-                $landing_vs_avg_raw = $pilot['avg_landing_vs_signed'] ?? 9999;
+                $landing_vs_avg_raw = $pilot['best_landing_vs_signed'] ?? 9999; /* CORRIGIDO AQUI: USANDO best_landing_vs_signed */
                 $landing_vs_abs = abs($landing_vs_avg_raw); 
                 $landing_vs_display = number_format($landing_vs_abs, 1, '.', '');
                 $landing_vs_for_color = round($landing_vs_abs);
@@ -767,16 +767,17 @@ $conn_voos->close();
                     $aircraft_display = " (" . htmlspecialchars($aircraft_model) . ")";
                 }
 
-                // ADIÇÃO DA CATEGORIA NA EXIBIÇÃO
-                $category_tag = " [" . $category_code . "]";
-                $pilot_name_display = htmlspecialchars($first_name) . $aircraft_display . $category_tag;
+                // ADIÇÃO DA CATEGORIA NA EXIBIÇÃO COM ESTILO ELEGANCE
+                $category_badge = ' <span style="background-color: #e0e0e0; color: #333; padding: 1px 4px; border-radius: 3px; font-weight: 700; font-size: 0.8em; margin-left: 5px;">' . $category_code . '</span>';
+                
+                $pilot_name_display = htmlspecialchars($first_name) . $aircraft_display;
 
             ?>
               <li>
                 <div class="pilot-details">
                     <img src="<?= htmlspecialchars($pilot_photo) ?>" class="pilot-photo" onerror="this.onerror=null; this.src='assets/images/piloto.png';">
                     <a href="estatisticas_piloto.php?id=<?= urlencode($pilot_id) ?>" class="pilot-link">
-                        <span class="name"><?= $pilot_name_display ?></span>
+                        <span class="name"><?= $pilot_name_display . $category_badge ?></span>
                     </a>
                 </div>
                 <span class="hours" style="font-weight: 700; color: <?= $color ?>;"><?= $landing_vs_display ?> fpm</span>
