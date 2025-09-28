@@ -22,7 +22,7 @@ function format_seconds_to_hm($seconds)
   return sprintf('%02d:%02d', $h, $m);
 }
 function format_seconds_to_float($seconds)
-{
+  {
   if (!$seconds || $seconds <= 0) return 0.00;
   return round($seconds / 3600, 2);
 }
@@ -132,6 +132,23 @@ if ($current_month_flights_result) {
     }
 }
 
+// --- Definição de Limites de Pouso por Categoria (fpm) ---
+$landing_thresholds = [
+    // [Green_Max, Yellow_Max] -> Red > Yellow_Max
+    'L' => ['Green_Max' => 150, 'Yellow_Max' => 300], // Leve
+    'M' => ['Green_Max' => 200, 'Yellow_Max' => 400], // Médio
+    'H' => ['Green_Max' => 300, 'Yellow_Max' => 500], // Pesado
+];
+
+// --- Carregar Mapeamento de Categoria da Frota ---
+$aircraft_categories = [];
+$cat_result = $conn_voos->query("SELECT model, category FROM frota");
+if ($cat_result) {
+    while ($row = $cat_result->fetch_assoc()) {
+        $aircraft_categories[$row['model']] = $row['category'];
+    }
+}
+
 // --- O RESTANTE DA LÓGICA DE BUSCA DE DADOS ---
 $recent_flights_result = $conn_voos->query("SELECT userId, callsign, flightPlan_aircraft_model as EQP, flightPlan_departureId as ORIG, flightPlan_arrivalId as DEST, time, createdAt, network FROM ".DB_VOOS_NAME.".voos ORDER BY createdAt DESC LIMIT 10");
 $kpi_data = $conn_voos->query("SELECT SUM(time) as total_seconds, COUNT(*) as total_flights FROM ".DB_VOOS_NAME.".voos")->fetch_assoc();
@@ -144,6 +161,59 @@ foreach (['L', 'M', 'H'] as $category) {
   $weekly_champions[$category] = ($result && $result->num_rows > 0) ? $result->fetch_assoc() : null;
 }
 $top_weekly_result = $conn_voos->query("SELECT userId, SUM(time) as total_seconds FROM ".DB_VOOS_NAME.".voos WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY userId ORDER BY total_seconds DESC LIMIT 3");
+
+// Lógica para o TOP 3 Landing Rate da Semana (1 por Categoria)
+$top_landing_rate_result_by_cat = [];
+$categories_to_check = ['L', 'M', 'H'];
+$db_name = DB_VOOS_NAME;
+
+$query_template = "
+    SELECT 
+        t1.userId, 
+        AVG(t1.landing_vs) as avg_landing_vs_signed,
+        ? as category_code,
+        (
+            SELECT t2.flightPlan_aircraft_model
+            FROM {$db_name}.voos t2
+            WHERE t2.userId = t1.userId
+            AND t2.createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            AND t2.wakeTurbulence = ?
+            GROUP BY t2.flightPlan_aircraft_model
+            ORDER BY COUNT(*) DESC, MAX(t2.createdAt) DESC
+            LIMIT 1
+        ) AS main_aircraft_model
+    FROM 
+        {$db_name}.voos t1 
+    WHERE 
+        t1.createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) 
+        AND t1.landing_vs IS NOT NULL 
+        AND t1.landing_vs < 0 
+        AND t1.wakeTurbulence = ?
+    GROUP BY 
+        t1.userId 
+    HAVING
+        COUNT(*) >= 1 
+    ORDER BY 
+        avg_landing_vs_signed DESC
+    LIMIT 1
+";
+
+$stmt_landing = $conn_voos->prepare($query_template);
+
+foreach ($categories_to_check as $cat) {
+    if ($stmt_landing) {
+        $stmt_landing->bind_param("sss", $cat, $cat, $cat);
+        $stmt_landing->execute();
+        $result = $stmt_landing->get_result();
+        
+        if ($result->num_rows > 0) {
+            $row = $result->fetch_assoc();
+            $top_landing_rate_result_by_cat[] = $row;
+        }
+    }
+}
+$stmt_landing->close();
+
 function get_daily_stats_for_month($conn, $interval_months, $aggregate_expression)
 {
   if ($interval_months == 0) {
@@ -525,7 +595,8 @@ $conn_voos->close();
     
     @media (min-width: 768px) {
       .dashboard-grid { grid-template-columns: repeat(6, 1fr); }
-      .card.vuelos-realizados, .card.top-pilotos-semana, .card.horas-mes, .card.horas-dia-semana, .card.vuelos-diarios, .card.horas-totales { grid-column: span 6; }
+      .card.vuelos-realizados, .card.horas-mes, .card.horas-dia-semana, .card.vuelos-diarios, .card.horas-totales { grid-column: span 6; }
+      .card.top-pilotos-semana, .card.top-landing-rate-card { grid-column: span 3; }
       .card.kpi-horas, .card.kpi-vuelos { grid-column: span 3; }
       .card.piloto-semana-l, .card.piloto-semana-m, .card.piloto-semana-h { grid-column: span 2; }
     }
@@ -537,7 +608,8 @@ $conn_voos->close();
       .card.piloto-semana-l { grid-column: 7 / 9; grid-row: 1 / 2; }
       .card.piloto-semana-m { grid-column: 9 / 11; grid-row: 1 / 2; }
       .card.piloto-semana-h { grid-column: 11 / 13; grid-row: 1 / 2; }
-      .card.top-pilotos-semana { grid-column: 7 / 13; grid-row: 2 / 3; }
+      .card.top-pilotos-semana { grid-column: 7 / 10; grid-row: 2 / 3; }
+      .card.top-landing-rate-card { grid-column: 10 / 13; grid-row: 2 / 3; }
       .card.horas-mes { grid-column: 1 / 7; grid-row: 3 / 4; }
       .card.horas-dia-semana { grid-column: 7 / 13; grid-row: 3 / 4; }
       .card.vuelos-diarios { grid-column: 1 / 7; grid-row: 4 / 5; }
@@ -652,6 +724,67 @@ $conn_voos->close();
                 </li>
             <?php endwhile;
             } ?>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="card top-landing-rate-card">
+        <h3 class="card-title"><?= t('top_landing_rate') ?></h3>
+        <div class="card-content">
+          <ul class="top-list">
+            <?php if (!empty($top_landing_rate_result_by_cat)): // Usando sintaxe de dois pontos (:)
+              foreach ($top_landing_rate_result_by_cat as $pilot):
+                $pilot_id = $pilot['userId'];
+                $pilot_name = $pilots_map[$pilot_id] ?? t('visitor');
+                $pilot_photo = $pilots_photos[$pilot_id] ?? 'piloto.png';
+                $category_code = $pilot['category_code'];
+                
+                // 1. Obtém os valores de pouso e aeronave
+                $landing_vs_avg_raw = $pilot['avg_landing_vs_signed'] ?? 9999;
+                $landing_vs_abs = abs($landing_vs_avg_raw); 
+                $landing_vs_display = number_format($landing_vs_abs, 1, '.', '');
+                $landing_vs_for_color = round($landing_vs_abs);
+                $aircraft_model = $pilot['main_aircraft_model'] ?? t('not_available_abbr'); 
+                
+                // 2. Determina os limites de pouso com base na categoria
+                $thresholds = $landing_thresholds[$category_code] ?? $landing_thresholds['M'];
+
+                // 3. Lógica de cores baseada na categoria
+                $color = '#dc3545'; // Vermelho (Hard)
+
+                if ($landing_vs_for_color <= $thresholds['Green_Max']) {
+                    $color = '#48c774'; // Verde (Smooth)
+                } elseif ($landing_vs_for_color <= $thresholds['Yellow_Max']) {
+                    $color = '#ffc107'; // Amarelo (Medium)
+                } 
+                
+                // 4. Lógica de formatação do nome (Primeiro nome + Aeronave + Categoria)
+                $name_parts = explode(' ', $pilot_name);
+                $first_name = $name_parts[0];
+                $aircraft_display = "";
+                
+                if ($aircraft_model !== t('not_available_abbr')) {
+                    $aircraft_display = " (" . htmlspecialchars($aircraft_model) . ")";
+                }
+
+                // ADIÇÃO DA CATEGORIA NA EXIBIÇÃO
+                $category_tag = " [" . $category_code . "]";
+                $pilot_name_display = htmlspecialchars($first_name) . $aircraft_display . $category_tag;
+
+            ?>
+              <li>
+                <div class="pilot-details">
+                    <img src="<?= htmlspecialchars($pilot_photo) ?>" class="pilot-photo" onerror="this.onerror=null; this.src='assets/images/piloto.png';">
+                    <a href="estatisticas_piloto.php?id=<?= urlencode($pilot_id) ?>" class="pilot-link">
+                        <span class="name"><?= $pilot_name_display ?></span>
+                    </a>
+                </div>
+                <span class="hours" style="font-weight: 700; color: <?= $color ?>;"><?= $landing_vs_display ?> fpm</span>
+              </li>
+            <?php endforeach; // Fechamento do foreach ?>
+            <?php else: // Início do else ?>
+              <li><?= t('no_data') ?></li>
+            <?php endif; // Fechamento do if ?>
           </ul>
         </div>
       </div>

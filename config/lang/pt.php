@@ -1,5 +1,4 @@
 <?php
-
 // lang_pt.php
 $lang = [
 // Geral
@@ -18,6 +17,7 @@ $lang = [
 'total_hours_by_day' => 'Total de Horas de Voo por Dia',
 'daily_flights_count' => 'Número de Voos Diários',
 'total_hours_top_5' => 'Horas Totais (TOP 5)',
+'top_landing_rate' => 'TOP 3 Taxa de Pouso (Semana)', // CHAVE ADICIONADA/ATUALIZADA
 'col_date' => 'DATA',
 'col_pic' => 'PIC',
 'col_eqp' => 'EQP',

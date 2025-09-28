@@ -17,6 +17,7 @@ $lang = [
     'total_hours_by_day' => 'Total de Horas de Vuelo por Día',
     'daily_flights_count' => 'Número de Vuelos Diarios',
     'total_hours_top_5' => 'Horas Totales (TOP 5)',
+    'top_landing_rate' => 'TOP 3 Aterrizaje (SEMANA)', // CHAVE ADICIONADA/ATUALIZADA
     'col_date' => 'FECHA',
     'col_pic' => 'PIC',
     'col_eqp' => 'EQP',
