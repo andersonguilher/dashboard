@@ -229,10 +229,165 @@ Abra no navegador `/admin` para configuração.
 DELIMITER $$
 CREATE PROCEDURE `sp_verificar_e_inserir_frota`()
 BEGIN
-  -- Lógica detalhada para inserção de frota e atribuição de matrículas
+    DECLARE v_model VARCHAR(50);
+    DECLARE v_category CHAR(1);
+    DECLARE v_done INT DEFAULT FALSE;
+    DECLARE v_required_count INT;
+    DECLARE v_current_count INT;
+    DECLARE v_to_insert_count INT;
+    DECLARE i INT;
+    DECLARE v_exists INT;
+    DECLARE v_new_registration VARCHAR(10);
+    DECLARE v_three_letters CHAR(3);
+    DECLARE v_new_cost DECIMAL(10,2);
+    DECLARE v_new_maint DECIMAL(10,2);
+    DECLARE v_new_fuel DECIMAL(10,2);
+    DECLARE v_new_revenue_per_pax_hr DECIMAL(10,2);
+    DECLARE v_min_revenue_per_pax DECIMAL(10,2);
+    DECLARE v_min_flight_duration DECIMAL(10,2);
+    
+    -- Variáveis para Atribuição de Matrículas
+    DECLARE reg_list TEXT;
+    DECLARE reg_count INT;
+    DECLARE flight_done INT DEFAULT FALSE;
+    DECLARE v_flight_pk BIGINT;
+    DECLARE v_reg_index INT DEFAULT 1;
+    DECLARE v_reg_str VARCHAR(10);
+
+    DECLARE aircraft_cursor CURSOR FOR
+        SELECT flightPlan_aircraft_model, wakeTurbulence 
+        FROM voos
+        WHERE flightPlan_aircraft_model IS NOT NULL 
+          AND flightPlan_aircraft_model <> '' 
+          AND flightPlan_aircraft_model NOT LIKE '%xx%' 
+          AND wakeTurbulence IN ('L','M','H')
+        GROUP BY flightPlan_aircraft_model, wakeTurbulence;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = TRUE;
+
+    -- Inicializa a variável de sessão/usuário para uso no loop de atribuição
+    SET @row_number = 0; 
+    
+    OPEN aircraft_cursor;
+
+    read_loop: LOOP
+        FETCH aircraft_cursor INTO v_model, v_category;
+        IF v_done THEN LEAVE read_loop; END IF;
+
+        -- CÁLCULO DINÂMICO DO REQUISITO DE FROTA (MÁXIMO SIMULTÂNEO)
+        SELECT COALESCE(MAX(t.flight_count), 0) INTO v_required_count
+        FROM (
+            SELECT 
+                DATE(createdAt) as flight_day,
+                HOUR(createdAt) as flight_hour,
+                COUNT(DISTINCT userId) as flight_count
+            FROM voos
+            WHERE flightPlan_aircraft_model = v_model
+            GROUP BY flight_day, flight_hour
+        ) as t;
+
+        IF v_required_count = 0 THEN
+            SET v_required_count = 1;
+        END IF;
+
+        -- Lógica de Inserção de Novas Matrículas
+        SELECT COUNT(*) INTO v_current_count FROM frota WHERE model = v_model;
+        SET v_to_insert_count = v_required_count - v_current_count;
+
+        IF v_to_insert_count > 0 THEN
+            -- Receita/hora base por categoria
+            SET v_new_revenue_per_pax_hr = CASE v_category
+                                             WHEN 'L' THEN 900.00
+                                             WHEN 'M' THEN 305.00 
+                                             WHEN 'H' THEN 390.00
+                                             ELSE 150.00
+                                           END;
+
+            -- Valores mínimos de receita por passageiro em voos curtos
+            SET v_min_revenue_per_pax = CASE v_category
+                                          WHEN 'L' THEN 900.00
+                                          WHEN 'M' THEN 305.00 
+                                          WHEN 'H' THEN 400.00
+                                          ELSE 150.00
+                                        END;
+
+            -- Duração mínima para aplicar receita normal (horas)
+            SET v_min_flight_duration = CASE v_category
+                                          WHEN 'L' THEN 1.0
+                                          WHEN 'M' THEN 1.5
+                                          WHEN 'H' THEN 2.0
+                                          ELSE 0.5
+                                        END;
+
+            SET i = 0;
+            WHILE i < v_to_insert_count DO
+                -- Geração única de matrícula
+                uniqueness_loop:LOOP
+                    SET v_three_letters = CONCAT(CHAR(FLOOR(65 + RAND()*26)), CHAR(FLOOR(65 + RAND()*26)), CHAR(FLOOR(65 + RAND()*26)));
+                    SET v_new_registration = CONCAT('PR-', v_three_letters);
+                    SELECT COUNT(*) INTO v_exists FROM frota WHERE registration = v_new_registration;
+                    IF v_exists = 0 THEN LEAVE uniqueness_loop; END IF;
+                END LOOP uniqueness_loop;
+                
+                -- Custo Operacional e Manutenção
+                SET v_new_cost = CASE v_category WHEN 'L' THEN 700 * (1 + (RAND()-0.5)*0.1) WHEN 'M' THEN 4500 * (1 + (RAND()-0.5)*0.1) WHEN 'H' THEN 10000 * (1 + (RAND()-0.5)*0.1) ELSE 2000 END;
+                SET v_new_maint = v_new_cost * 0.2;
+                
+                -- CORREÇÃO CRÍTICA: Ajusta o consumo de combustível para Categoria 'L' para um valor realista (25 L/h)
+                SET v_new_fuel = CASE v_category 
+                                 WHEN 'L' THEN 25 + (RAND()-0.5)*5 -- Categoria Leve (C150)
+                                 WHEN 'M' THEN 2850 + (RAND()-0.5)*150 
+                                 WHEN 'H' THEN 7000 + (1 + (RAND()-0.5)*500) 
+                                 ELSE 500 + (RAND()-0.5)*100 END;
+
+                INSERT INTO frota (registration, model, category, operational_cost_per_hour, maintenance_per_hour, fuel_consumption_per_hour, revenue_per_pax_per_hour, min_revenue_per_pax, min_flight_duration)
+                VALUES (v_new_registration, v_model, v_category, v_new_cost, v_new_maint, v_new_fuel, v_new_revenue_per_pax_hr, v_min_revenue_per_pax, v_min_flight_duration);
+
+                SET i = i + 1;
+            END WHILE;
+        END IF;
+        
+        -- =================================================================
+        -- ATRIBUIÇÃO DE MATRÍCULAS (ROUND-ROBIN PARA VOOS SEM REGISTRO)
+        -- =================================================================
+        
+        SELECT GROUP_CONCAT(registration ORDER BY registration) INTO reg_list FROM frota WHERE model = v_model;
+        
+        IF reg_list IS NOT NULL THEN
+            SET reg_count = LENGTH(reg_list) - LENGTH(REPLACE(reg_list, ',', '')) + 1;
+            SET v_reg_index = 1;
+            SET flight_done = FALSE;
+            
+            BEGIN
+                DECLARE flight_cursor CURSOR FOR
+                    SELECT primare_key FROM voos
+                    WHERE flightPlan_aircraft_model = v_model AND registration IS NULL
+                    ORDER BY createdAt ASC;
+                    
+                DECLARE CONTINUE HANDLER FOR NOT FOUND SET flight_done = TRUE;
+                
+                OPEN flight_cursor;
+                flight_loop: LOOP
+                    FETCH flight_cursor INTO v_flight_pk;
+                    IF flight_done THEN LEAVE flight_loop; END IF;
+                    
+                    SET v_reg_index = (v_reg_index - 1) % reg_count + 1;
+                    
+                    SET v_reg_str = TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(reg_list, ','), ',', v_reg_index), ',', -1));
+                    
+                    UPDATE voos SET registration = v_reg_str WHERE primare_key = v_flight_pk;
+                    
+                    SET v_reg_index = v_reg_index + 1;
+                END LOOP flight_loop;
+                CLOSE flight_cursor;
+            END;
+        END IF;
+
+    END LOOP;
+
+    CLOSE aircraft_cursor;
 END$$
-DELIMITER ;
-CALL sp_verificar_e_inserir_frota();
+DELIMITER;
 ```
 
 ### Estrutura do Projeto
