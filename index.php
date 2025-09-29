@@ -149,20 +149,85 @@ if ($cat_result) {
     }
 }
 
-// --- O RESTANTE DA LÓGICA DE BUSCA DE DADOS ---
+// --- Definição dos limites semanais GMT (Segunda 00:00:00 - Segunda 00:00:00) ---
+$current_gmt_time = time(); 
+// Início da semana atual (Inclusivo): Segunda-feira desta semana às 00:00:00 GMT
+$start_of_current_week_gmt = gmdate('Y-m-d 00:00:00', strtotime('monday this week', $current_gmt_time)); 
+// Fim da semana atual (Exclusivo): Segunda-feira da próxima semana às 00:00:00 GMT
+$end_of_current_week_gmt_exclusive = gmdate('Y-m-d 00:00:00', strtotime('+7 days', strtotime($start_of_current_week_gmt)));
+// Início da semana anterior (Inclusivo): Segunda-feira da semana passada às 00:00:00 GMT
+$start_of_previous_week_gmt = gmdate('Y-m-d 00:00:00', strtotime('monday last week', $current_gmt_time));
+
+// --- VARIÁVEIS DE DESTAQUE ATUAL EM GMT ---
+$current_gmt_day_of_month = (int)gmdate('j', $current_gmt_time); // Dia do mês em GMT (para o gráfico mensal)
+$current_gmt_day_of_week = (int)gmdate('w', $current_gmt_time); // Dia da semana em GMT (0=Dom, 1=Seg... para o gráfico semanal)
+
+
+// --- LÓGICA DE BUSCA DE DADOS TOP PILOTOS E HORAS SEMANAIS (AJUSTADO) ---
 $recent_flights_result = $conn_voos->query("SELECT userId, callsign, flightPlan_aircraft_model as EQP, flightPlan_departureId as ORIG, flightPlan_arrivalId as DEST, time, createdAt, network FROM ".DB_VOOS_NAME.".voos ORDER BY createdAt DESC LIMIT 10");
 $kpi_data = $conn_voos->query("SELECT SUM(time) as total_seconds, COUNT(*) as total_flights FROM ".DB_VOOS_NAME.".voos")->fetch_assoc();
-$kpi_total_hours = number_format(floor($kpi_data['total_seconds'] / 3600));
-$kpi_total_flights = number_format($kpi_data['total_flights']);
+
+// --- CORREÇÃO FORMATO KPI ---
+$kpi_total_hours = number_format(floor($kpi_data['total_seconds'] / 3600), 0, ',', '.');
+$kpi_total_flights = number_format($kpi_data['total_flights'], 0, ',', '.');
+// -----------------------------
+
+
+// 1. TOP 3 HORAS SEMANAIS (Semana Atual: Seg 00:00:00 GMT a Dom 23:59:59 GMT)
+$top_weekly_result_sql = "
+    SELECT userId, SUM(time) as total_seconds 
+    FROM ".DB_VOOS_NAME.".voos 
+    WHERE createdAt >= '{$start_of_current_week_gmt}' 
+      AND createdAt < '{$end_of_current_week_gmt_exclusive}'
+    GROUP BY userId 
+    ORDER BY total_seconds DESC 
+    LIMIT 3";
+$top_weekly_result = $conn_voos->query($top_weekly_result_sql);
+
+
+// 2. PILOTO DA SEMANA POR CATEGORIA (Semana Anterior: Seg 00:00:00 GMT a Dom 23:59:59 GMT)
+// USA O PERÍODO DA SEMANA ANTERIOR (De $start_of_previous_week_gmt até $start_of_current_week_gmt)
 $weekly_champions = [];
 foreach (['L', 'M', 'H'] as $category) {
-  $sql = "SELECT userId, SUM(time) as total_time FROM ".DB_VOOS_NAME.".voos WHERE wakeTurbulence = '{$category}' AND createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY userId ORDER BY total_time DESC LIMIT 1";
+  $sql = "
+    SELECT userId, SUM(time) as total_time 
+    FROM ".DB_VOOS_NAME.".voos 
+    WHERE wakeTurbulence = '{$category}' 
+      AND createdAt >= '{$start_of_previous_week_gmt}'
+      AND createdAt < '{$start_of_current_week_gmt}'
+    GROUP BY userId 
+    ORDER BY total_time DESC 
+    LIMIT 1";
   $result = $conn_voos->query($sql);
   $weekly_champions[$category] = ($result && $result->num_rows > 0) ? $result->fetch_assoc() : null;
 }
-$top_weekly_result = $conn_voos->query("SELECT userId, SUM(time) as total_seconds FROM ".DB_VOOS_NAME.".voos WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY userId ORDER BY total_seconds DESC LIMIT 3");
 
-// Lógica para o TOP 3 Landing Rate da Semana (1 por Categoria)
+// Prepara uma lista de IDs vencedores da semana anterior para destaque na tabela de voos E HOVER CARD
+$champions_ids = [];
+$champion_categories_map = []; // Mapeia userId para Categoria
+foreach ($weekly_champions as $category => $champion) {
+    if ($champion && isset($champion['userId'])) {
+        $pilot_id = $champion['userId'];
+        $champions_ids[] = $pilot_id;
+        // Se um piloto ganhar em múltiplas categorias (improvável), priorizamos a primeira categoria encontrada
+        if (!isset($champion_categories_map[$pilot_id])) {
+             $champion_categories_map[$pilot_id] = $category;
+        }
+    }
+}
+$champions_ids = array_unique($champions_ids);
+
+// --- ATUALIZAÇÃO: Injeta a categoria de campeão no array de detalhes para o Hover Card ---
+foreach ($champion_categories_map as $pilot_id => $category) {
+    if (isset($pilots_details[$pilot_id])) {
+        // Adiciona a categoria de campeão ao JSON que será lido pelo JavaScript
+        $pilots_details[$pilot_id]['champion_category'] = $category;
+    }
+}
+// --------------------------------------------------------------------------------------
+
+
+// 3. TOP 3 POUSOS (SEMANA ATUAL: Seg 00:00:00 GMT a Dom 23:59:59 GMT)
 $top_landing_rate_result_by_cat = [];
 $categories_to_check = ['L', 'M', 'H'];
 $db_name = DB_VOOS_NAME;
@@ -170,13 +235,14 @@ $db_name = DB_VOOS_NAME;
 $query_template = "
     SELECT 
         t1.userId, 
-        MAX(t1.landing_vs) as best_landing_vs_signed, /* CORREÇÃO AQUI: MAX para pegar o valor negativo mais próximo de zero */
+        MAX(t1.landing_vs) as best_landing_vs_signed, /* MAX para pegar o valor negativo mais próximo de zero */
         ? as category_code,
         (
             SELECT t2.flightPlan_aircraft_model
             FROM {$db_name}.voos t2
             WHERE t2.userId = t1.userId
-            AND t2.createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            AND t2.createdAt >= '{$start_of_current_week_gmt}'
+            AND t2.createdAt < '{$end_of_current_week_gmt_exclusive}'
             AND t2.wakeTurbulence = ?
             GROUP BY t2.flightPlan_aircraft_model
             ORDER BY COUNT(*) DESC, MAX(t2.createdAt) DESC
@@ -185,7 +251,8 @@ $query_template = "
     FROM 
         {$db_name}.voos t1 
     WHERE 
-        t1.createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) 
+        t1.createdAt >= '{$start_of_current_week_gmt}' 
+        AND t1.createdAt < '{$end_of_current_week_gmt_exclusive}'
         AND t1.landing_vs IS NOT NULL 
         AND t1.landing_vs < 0 
         AND t1.wakeTurbulence = ?
@@ -253,23 +320,25 @@ foreach ($daily_seconds_anterior as $seconds) {
 }
 $chart_labels_dias_mes = range(1, 31);
 
-// --- LÓGICA REVISADA PARA EXIBIR A SEMANA CORRENTE (Dom-Sáb) ---
+// --- LÓGICA DO GRÁFICO HORAS DIA SEMANA (Seg-Dom, GMT) ---
 
 // 1. Definir os dias da semana para o eixo X do gráfico (AGORA DINÂMICO)
-$chart_labels_dias_semana = t('days_of_week_abbr');
+$chart_labels_dias_semana = t('days_of_week_abbr_mon_start'); // Usa o novo label que começa na Segunda
 $chart_data_horas_semana_atual_corrigido = array_fill(0, 7, 0);
 $chart_data_horas_semana_anterior_corrigido = array_fill(0, 7, 0);
 
-// 2. Calcular as datas de início da semana atual e anterior (considerando Domingo como início)
-$today_day_of_week = date('w'); // Retorna 0 para Domingo, 1 para Segunda..., 6 para Sábado
-$start_of_current_week = date('Y-m-d', strtotime("-$today_day_of_week days"));
-$start_of_previous_week = date('Y-m-d', strtotime("$start_of_current_week -7 days"));
+// 2. Calcular as datas de início da semana atual e anterior (usando os limites GMT calculados acima)
+$start_of_current_week = $start_of_current_week_gmt;
+$end_of_current_week_exclusive = $end_of_current_week_gmt_exclusive;
+$start_of_previous_week = $start_of_previous_week_gmt;
 
-// 3. Buscar dados da semana ATUAL (Do último domingo até hoje)
+
+// 3. Buscar dados da semana ATUAL (Da última segunda-feira até a próxima segunda-feira)
 $sql_semana_atual_corrigido = "
     SELECT DATE(createdAt) as dia, SUM(time) as total_seconds
     FROM " . DB_VOOS_NAME . ".voos
-    WHERE createdAt >= '{$start_of_current_week} 00:00:00'
+    WHERE createdAt >= '{$start_of_current_week}'
+      AND createdAt < '{$end_of_current_week_exclusive}'
     GROUP BY dia";
 
 $result_semana_atual_corrigido = $conn_voos->query($sql_semana_atual_corrigido);
@@ -284,7 +353,7 @@ if ($result_semana_atual_corrigido) {
 $sql_semana_anterior_corrigido = "
     SELECT DATE(createdAt) as dia, SUM(time) as total_seconds
     FROM " . DB_VOOS_NAME . ".voos
-    WHERE createdAt >= '{$start_of_previous_week} 00:00:00' AND createdAt < '{$start_of_current_week} 00:00:00'
+    WHERE createdAt >= '{$start_of_previous_week}' AND createdAt < '{$start_of_current_week}'
     GROUP BY dia";
 
 $result_semana_anterior_corrigido = $conn_voos->query($sql_semana_anterior_corrigido);
@@ -297,14 +366,16 @@ if ($result_semana_anterior_corrigido) {
 
 // 5. Montar os arrays finais para o gráfico
 for ($i = 0; $i < 7; $i++) {
-    $data_da_semana_atual = date('Y-m-d', strtotime("$start_of_current_week +$i days"));
-    $data_da_semana_anterior = date('Y-m-d', strtotime("$start_of_previous_week +$i days"));
+    // Calcula as datas de Segunda a Domingo (índice 0 a 6)
+    $data_da_semana_atual = gmdate('Y-m-d', strtotime("$start_of_current_week +$i days"));
+    $data_da_semana_anterior = gmdate('Y-m-d', strtotime("$start_of_previous_week +$i days"));
 
     // Preenche o array da semana anterior
     $chart_data_horas_semana_anterior_corrigido[$i] = $map_semana_anterior_corrigido[$data_da_semana_anterior] ?? 0;
     
-    // Preenche o array da semana atual, mas define como nulo para dias futuros, para que a linha não avance no tempo
-    if (strtotime($data_da_semana_atual) > time()) {
+    // Preenche o array da semana atual, mas define como nulo para dias futuros em GMT, para que a linha não avance no tempo
+    // Compara a data de 23:59:59 GMT do dia com o GMT atual
+    if (strtotime($data_da_semana_atual . ' 23:59:59') > $current_gmt_time) {
         $chart_data_horas_semana_atual_corrigido[$i] = null;
     } else {
         $chart_data_horas_semana_atual_corrigido[$i] = $map_semana_atual_corrigido[$data_da_semana_atual] ?? 0;
@@ -331,15 +402,18 @@ $top_pilots_sql = "
     total_seconds DESC
   LIMIT 5
 ";
-$top_pilots_result = $conn_voos->query($top_pilots_sql);
-if ($top_pilots_result) {
-  while ($row = $top_pilots_result->fetch_assoc()) {
+$top_pilots_result_all_time = $conn_voos->query($top_pilots_sql);
+if ($top_pilots_result_all_time) {
+  while ($row = $top_pilots_result_all_time->fetch_assoc()) {
     $chart_labels_top_pilots[] = $pilots_map[$row['userId']] ?? 'Desconhecido';
     $chart_data_top_pilots_hours[] = floor($row['total_seconds'] / 3600);
   }
 }
 $conn_pilotos->close();
 $conn_voos->close();
+
+// Prepara o prefixo traduzido para o JavaScript, removendo ' Cat. '
+$pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
 ?>
 <!DOCTYPE html>
 <html lang="<?= $lang_code ?>">
@@ -350,7 +424,7 @@ $conn_voos->close();
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"> <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     /* O :root FOI REMOVIDO DAQUI */
     body {
@@ -536,6 +610,11 @@ $conn_voos->close();
       opacity: 0; 
       transition: opacity 0.3s ease; 
     }
+    #champion-status-hover {
+        font-size: 0.9em; 
+        font-weight: 700; 
+        margin-bottom: 10px; 
+    }
     #card-piloto-hover .content {
       display: flex;
       flex-direction: column;
@@ -660,7 +739,18 @@ $conn_voos->close();
                   <td><?= (new DateTime($flight['createdAt']))->format('d/m') ?></td>
                   <td>
                       <?php if ($pilot_details): ?>
-                          <?= htmlspecialchars($pilot_details['name']) ?>
+                          <?php
+                              $full_name = htmlspecialchars($pilot_details['name']);
+                              $name_parts = explode(' ', $full_name);
+                              // Exibe apenas o primeiro e o segundo nome
+                              $display_name_short = implode(' ', array_slice($name_parts, 0, 2));
+                              
+                              // Adicionar estrela se for piloto da semana anterior (qualquer categoria)
+                              $is_champion = in_array($pilot_id, $champions_ids);
+                              $star_icon = $is_champion ? 
+                                           '<i class="fa-solid fa-star" style="color: gold; margin-left: 5px;" title="Piloto da Semana Anterior"></i>' : '';
+                          ?>
+                          <?= $display_name_short . $star_icon ?>
                       <?php else: ?>
                           <span class="pic-visitante"><?= t('visitor') ?></span>
                       <?php endif; ?>
@@ -686,7 +776,12 @@ $conn_voos->close();
       </div>
       <?php foreach (['L', 'M', 'H'] as $cat): ?>
         <div class="card piloto-semana-<?= strtolower($cat) ?>">
-          <h3 class="card-title"><?= t('pilot_of_the_week') . $cat ?></h3>
+          <h3 class="card-title">
+              <?= $pilot_of_the_week_prefix ?> 
+              <span style="background-color: var(--primary-color); color: white; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 5px;">
+                  <?= htmlspecialchars($cat) ?>
+              </span>
+          </h3>
           <div class="card-content champion-pilot">
             <?php if ($weekly_champions[$cat]):
               $pilot_id = $weekly_champions[$cat]['userId'];
@@ -812,6 +907,7 @@ $conn_voos->close();
       <div class="content">
           <img src="piloto.png" alt="Foto do Piloto">
           <div class="name"></div>
+          <div id="champion-status-hover" style="font-size: 0.9em; font-weight: 700; margin-bottom: 10px; display: none;"></div> 
           <div class="stat-info">
               <div class="stat-item">
                   <span class="stat-label"><?= t('flights_label') ?></span>
@@ -867,12 +963,29 @@ $conn_voos->close();
         const cardVuelos = document.getElementById('card-vuelos');
         const cardHoras = document.getElementById('card-horas');
         const chartContainer = card.querySelector('.monthly-chart');
-        
+        const championStatusDiv = document.getElementById('champion-status-hover'); // NOVO
+
         img.src = pilot.photo || 'piloto.png';
         img.onerror = function() { this.src = 'piloto.png'; };
         nameDiv.textContent = pilot.name;
         cardVuelos.textContent = pilot.total_flights;
         cardHoras.textContent = pilot.total_hours;
+
+        // --- LÓGICA DO PILOTO DA SEMANA ---
+        if (pilot.champion_category) {
+            const category = pilot.champion_category;
+            const prefix = "<?= $pilot_of_the_week_prefix ?>"; 
+            // 1. Define o ícone da estrela
+            const star_icon = '<i class="fa-solid fa-star" style="color: gold; margin-right: 5px;"></i>';
+            // 2. Cria o span de destaque para a categoria
+            const category_display = `<span style="background-color: var(--primary-color); color: #fff; padding: 2px 5px; border-radius: 4px; margin-left: 5px;">${category}</span>`;
+            // 3. Monta a string: [Star] [Prefix] [Category]
+            championStatusDiv.innerHTML = `${star_icon} ${prefix} ${category_display}`;
+            championStatusDiv.style.display = 'block';
+        } else {
+            championStatusDiv.style.display = 'none';
+        }
+        // --- FIM LÓGICA DO PILOTO DA SEMANA ---
         
         createMiniChart(pilot.monthly_data, chartContainer);
 
@@ -938,8 +1051,11 @@ $conn_voos->close();
           },
           plugins: { legend: { labels: { color: chartTextColor, boxWidth: 10, font: { size: 11 } } } }
         };
+        
+        // --- CÓDIGO CORRIGIDO PARA DESTAQUE MENSAL ---
+        const todayIndexMonth = <?= $current_gmt_day_of_month ?> - 1; // Dia do mês GMT (0-indexado)
+        // --- FIM CORREÇÃO MENSAL ---
 
-        const todayIndexMonth = new Date().getDate() - 1; // -1 porque labels começa em 0
 
         new Chart(document.getElementById('graficoHorasMes'), {
             type: 'line',
@@ -1021,7 +1137,12 @@ $conn_voos->close();
             ]
         });
 
-        const todayIndex = new Date().getDay(); // 0 = Domingo, 1 = Segunda ... 6 = Sábado
+        // --- CÓDIGO CORRIGIDO PARA DESTAQUE SEMANAL ---
+        const todayIndexJS = <?= $current_gmt_day_of_week ?>; // Dia da semana GMT (0=Dom, 1=Seg...)
+        // Converte o índice do dia (0=Dom, 1=Seg... 6=Sáb) para o índice do array do gráfico (0=Seg, 1=Ter... 6=Dom)
+        const todayIndexChart = (todayIndexJS + 6) % 7; 
+        // --- FIM CORREÇÃO SEMANAL ---
+
 
         function hexToRgba(hex, alpha) {
             hex = hex.replace('#','');
@@ -1060,11 +1181,11 @@ $conn_voos->close();
                     x: {
                         ticks: {
                             color: function(context) {
-                                return context.index === todayIndex ? primaryColor : '#666';
+                                return context.index === todayIndexChart ? primaryColor : '#666';
                             },
                             font: function(context) {
                                 return {
-                                    weight: context.index === todayIndex ? 'bold' : 'normal',
+                                    weight: context.index === todayIndexChart ? 'bold' : 'normal',
                                     size: 12
                                 };
                             }
@@ -1072,7 +1193,7 @@ $conn_voos->close();
                         grid: {
                             display: true,
                             color: function(context) {
-                                if (context.index === todayIndex) {
+                                if (context.index === todayIndexChart) {
                                     return hexToRgba(primaryColor, 0.05); // linha base quase transparente
                                 }
                                 return '#e0e0e0'; // linhas dos outros dias
@@ -1094,7 +1215,7 @@ $conn_voos->close();
                         const ctx = chart.ctx;
                         const xScale = chart.scales.x;
                         const yScale = chart.scales.y;
-                        const x = xScale.getPixelForTick(todayIndex);
+                        const x = xScale.getPixelForTick(todayIndexChart);
 
                         ctx.save();
                         ctx.strokeStyle = hexToRgba(primaryColor, 0.2); // traço principal com opacidade

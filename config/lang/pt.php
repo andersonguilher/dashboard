@@ -12,7 +12,7 @@ $lang = [
 'total_hours' => 'Total de Horas',
 'total_flights' => 'Total de Voos',
 'pilot_of_the_week' => 'Piloto da Semana Cat. ',
-'hours_this_week' => 'Horas (Semana)',
+'hours_this_week' => 'TOP 3 Horas Voadas (Semana)',
 'accumulated_hours_month' => 'Horas Acumuladas no Mês',
 'total_hours_by_day' => 'Total de Horas de Voo por Dia',
 'daily_flights_count' => 'Número de Voos Diários',
@@ -35,6 +35,7 @@ $lang = [
 
 // Rótulos de dias da semana para gráficos
 'days_of_week_abbr' => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+'days_of_week_abbr_mon_start' => ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], // NOVO: Início na Segunda
 
 // est.php
 'pilot_statistics_title' => 'Estatísticas de Pilotos',

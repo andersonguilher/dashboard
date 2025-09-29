@@ -1,5 +1,11 @@
 <?php
 // ===================================
+// 0. CONFIGURAÇÃO DE FUSO HORÁRIO (ADICIONADO)
+// Garante que todas as operações de data e hora sejam baseadas em UTC/GMT.
+// ===================================
+date_default_timezone_set('UTC');
+
+// ===================================
 // 1. CARREGAR CONFIGURAÇÕES GLOBAIS DO ARQUIVO JSON
 // ===================================
 $settings_file = __DIR__ . '/../config/settings.json';
