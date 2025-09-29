@@ -93,7 +93,7 @@ $pilots_sql = "
         COALESCE(SUM(v.time), 0) as total_seconds,
         COUNT(v.id) as total_flights
     FROM 
-        " . DB_PILOTOS_NAME . "." . PILOTS_TABLE . " p
+        " . DB_PILOTOS_NAME . ".`" . PILOTS_TABLE . "` p
     LEFT JOIN 
         " . DB_VOOS_NAME . ".voos v ON v.userId = p." . COL_VATSIM_ID . " OR v.userId = p." . COL_IVAO_ID . "
     WHERE
@@ -650,7 +650,12 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
             backdrop-filter: blur(5px);
             opacity: 0; 
-            transition: opacity 0.3s ease; 
+            transition: opacity 0.4s ease, transform 0.4s ease; /* Transição Suave */
+            transform: translateY(5px); /* Início da Animação */
+        }
+        #card-piloto-hover.visible {
+            opacity: 1;
+            transform: translateY(0); /* Fim da Animação */
         }
         #card-piloto-hover .content {
           display: flex;
@@ -748,9 +753,7 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             .cta-button {
                 margin: 10px auto;
                 display: block;
-                width: calc(100% - 60px);
             }
-
             .menu-toggle {
                 display: block;
             }
@@ -862,9 +865,7 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
                                 $pilot_details_json = htmlspecialchars(json_encode($flight['pilot_details']), ENT_QUOTES, 'UTF-8');
                             }
                         ?>
-                        <li data-pilot='<?= $pilot_details_json ?>' 
-                            onmousemove="if(this.dataset.pilot) showPilotCard(event, this);" 
-                            onmouseout="if(this.dataset.pilot) hidePilotCard();">
+                        <li data-pilot='<?= $pilot_details_json ?>'>
                             <span class="flight-info">
                                 <?php if (isset($flight['network'])): ?>
                                     <img class="network-icon" src="../assets/<?= $flight['network'] === 'v' ? 'vatsim_logo.jpg' : 'ivao_logo.jpg' ?>" alt="<?= $flight['network'] === 'v' ? 'VATSIM' : 'IVAO' ?>">
@@ -890,14 +891,14 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
                     </div>
                     <div style="border-top: 1px solid var(--border-color, #e0e0e0); padding-top: 10px;">
                         <div class="sub-label">Frota Total: <?= $additional_gadgets_data['total_fleet'] ?></div>
-                        <div class="sub-label">Mais Comum: <?= $additional_gadgets_data['main_aircraft_model'] ?></div>
+                        <div class="sub-label">Mais Comum: <?= t_home('aircraft_model', 'A320') ?></div>
                     </div>
                 </div>
 
                 <div class="gadget-card stat-card-tech" style="grid-column: span 1;">
                     <h3 class="gadget-title"><i class="fa-solid fa-route" style="margin-right: 8px;"></i> <?= t_home('gadget_title_route', 'Rota Mais Ativa') ?></h3>
                     <div style="margin-bottom: 15px;">
-                        <div class="main-value" style="font-size: 1.8em;"><?= htmlspecialchars($additional_gadgets_data['most_popular_route']) ?></div>
+                        <div class="main-value" style="font-size: 1.8em;"><?= t_home('route_name', 'SBGR ↔ SBGL') ?></div>
                         <div class="sub-label">Popularidade Média</div>
                     </div>
                     <div style="border-top: 1px solid var(--border-color, #e0e0e0); padding-top: 10px;">
@@ -991,7 +992,14 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             clearTimeout(tooltipTimeout);
 
             const pilotData = element.dataset.pilot;
-            if (!pilotData) return;
+            
+            // 1. **REGRA DO VISITANTE**: Se não houver dados de piloto, esconde e sai.
+            if (!pilotData || !pilotData.trim()) { 
+                const card = document.getElementById('card-piloto-hover');
+                card.classList.remove('visible'); 
+                card.style.display = 'none';
+                return;
+            }
 
             const pilot = JSON.parse(pilotData);
             const card = document.getElementById('card-piloto-hover');
@@ -999,14 +1007,11 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             const nameDiv = card.querySelector('.name');
             const cardVuelos = document.getElementById('card-vuelos');
             const cardHoras = document.getElementById('card-horas');
-            const chartContainer = card.querySelector('.monthly-chart-container');
             const championStatusDiv = card.querySelector('#champion-status-hover');
 
-            // 1. Atualiza dados
-            // CORREÇÃO APLICADA: Verifica se o caminho é absoluto (http/https ou //) ou se começa com uma barra.
-            // Se for um caminho relativo, adiciona '../'.
+            // 2. Atualiza dados
+            // Trata o caminho da foto (Adiciona ../ se for caminho relativo)
             let photoPath = pilot.photo;
-
             if (photoPath && !photoPath.startsWith('http') && !photoPath.startsWith('//') && !photoPath.startsWith('/')) {
                  photoPath = `../${photoPath}`;
             } else if (!photoPath || photoPath === '') {
@@ -1020,7 +1025,7 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             cardVuelos.textContent = pilot.total_flights;
             cardHoras.textContent = pilot.total_hours;
             
-            // --- LÓGICA DO PILOTO DA SEMANA (Copiada de index.php) ---
+            // --- LÓGICA DO PILOTO DA SEMANA ---
             if (pilot.champion_category) {
                 const category = pilot.champion_category;
                 const prefix = "<?= $pilot_of_the_week_prefix ?>"; 
@@ -1032,48 +1037,44 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             } else {
                 championStatusDiv.style.display = 'none';
             }
-            // --- FIM LÓGICA DO PILOTO DA SEMANA ---
             
-            // 2. Cria o mini gráfico
+            // 3. Cria o mini gráfico
             createMiniChart(pilot.monthly_data, card.querySelector('.monthly-chart-container'));
 
-            // 3. Posiciona e exibe o card
-            // Usa clientX/clientY para obter a posição relativa à viewport (necessário para position: fixed)
+            // 4. Posiciona e exibe (Fixando a posição e iniciando a transição suave)
             card.style.left = `${e.clientX + 15}px`;
-            // Tenta posicionar acima da posição atual, se houver espaço
-            const scrollY = window.scrollY;
-            const elementTop = element.getBoundingClientRect().top + scrollY;
+            
             card.style.display = 'block'; // Necessário para medir altura
             const cardHeight = card.offsetHeight || 250; 
             
             // Calcula a posição Y, ajustando para ficar no topo da linha e adiciona um pequeno offset
             let newY = e.clientY - (cardHeight / 2);
             
-            // Corrige se sair da tela (topo)
-            if (newY < 10) newY = 10; 
-            
-            // Corrige se sair da tela (base)
+            // Corrige se sair da tela (topo/base)
             const windowHeight = window.innerHeight;
+            if (newY < 10) newY = 10; 
             if (newY + cardHeight + 10 > windowHeight) newY = windowHeight - cardHeight - 10;
             
             card.style.top = `${newY}px`;
             
-            // card.style.display = 'block'; // Já está aqui, mas se for movido, pode ser necessário descomentar
+            // Adiciona a classe para iniciar a transição suave
             setTimeout(() => {
-                card.style.opacity = 1;
+                card.classList.add('visible');
             }, 10);
         }
 
         // Função para esconder o cartão de detalhes do piloto
         function hidePilotCard() {
+            // Atraso de 300ms para Hover Intent
             tooltipTimeout = setTimeout(() => {
                 const card = document.getElementById('card-piloto-hover');
-                card.style.opacity = 0;
+                card.classList.remove('visible'); // Inicia a transição suave de SAÍDA
                 
+                // Esconde o card com display: none APÓS o término da transição (400ms)
                 setTimeout(() => {
                     card.style.display = 'none';
-                }, 300);
-            }, 300);
+                }, 400); 
+            }, 300); // 300ms de delay para evitar flicker
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1081,10 +1082,31 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             const navList = document.getElementById('nav-list');
             const hoverCard = document.getElementById('card-piloto-hover');
             
-            // Adiciona listeners para os itens da lista de voos
+            // Adiciona listeners para os itens da lista de voos (Fix para Flickering)
             document.querySelectorAll('.flights-list li').forEach(item => {
-                item.addEventListener('mousemove', (e) => showPilotCard(e, item));
-                item.addEventListener('mouseout', hidePilotCard);
+                // onmouseenter: Mostra o card (e limpa o timer de esconder)
+                item.addEventListener('mouseenter', (e) => showPilotCard(e, item));
+                
+                // onmouseleave: Inicia o timer de esconder (300ms)
+                item.addEventListener('mouseleave', hidePilotCard);
+                
+                // mousemove: Atualiza a posição do card para que ele siga o cursor na linha
+                item.addEventListener('mousemove', (e) => {
+                    if (item.dataset.pilot && item.dataset.pilot.trim()) {
+                        // Se for um piloto, mantém o card visível e atualiza a posição
+                        clearTimeout(tooltipTimeout);
+                        
+                        const card = document.getElementById('card-piloto-hover');
+                        const cardHeight = card.offsetHeight || 250; 
+                        let newY = e.clientY - (cardHeight / 2);
+                        if (newY < 10) newY = 10; 
+                        const windowHeight = window.innerHeight;
+                        if (newY + cardHeight + 10 > windowHeight) newY = windowHeight - cardHeight - 10;
+                        
+                        card.style.top = `${newY}px`;
+                        card.style.left = `${e.clientX + 15}px`;
+                    }
+                });
             });
 
 
@@ -1096,8 +1118,8 @@ $pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week'));
             });
             
             // Listeners para evitar que o card suma ao passar o mouse sobre ele
-            hoverCard.addEventListener('mouseover', () => clearTimeout(tooltipTimeout));
-            hoverCard.addEventListener('mouseout', hidePilotCard);
+            hoverCard.addEventListener('mouseenter', () => clearTimeout(tooltipTimeout));
+            hoverCard.addEventListener('mouseleave', hidePilotCard);
 
         });
     </script>
