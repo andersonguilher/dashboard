@@ -33,6 +33,7 @@ $financial_query_base = "
     FROM voos v
     LEFT JOIN frota f ON v.registration = f.registration -- JOIN: por Matrícula
     WHERE v.time > 0 AND v.peopleOnBoard > 0
+      AND YEAR(v.createdAt) = YEAR(NOW()) -- NOVO FILTRO: Ano Atual
     " . ($filter_real_fuel ? " AND v.fuel_used > 0 " : "") . " -- CLÁUSULA DE FILTRO
 ";
 $financial_query_base_with_profit = "

@@ -23,12 +23,9 @@ define('GALLONS_TO_LITERS', 3.78541);
 // Define o filtro para voos com fuel_used > 0, lendo da URL
 $filter_real_fuel = isset($_GET['real_fuel']) && $_GET['real_fuel'] == '1';
 
-// NOVO: Adiciona filtro para limitar ao MÊS ATUAL se o filtro de combustível real estiver ativo.
-$filter_month = "";
-if ($filter_real_fuel) {
-    // Se o filtro de Combustível Real estiver ativo, forçamos o filtro do mês atual.
-    $filter_month = " AND MONTH(v.createdAt) = MONTH(NOW()) AND YEAR(v.createdAt) = YEAR(NOW()) ";
-}
+// REMOÇÃO DA LÓGICA DE FILTRO DE MÊS AUTOMÁTICO: 
+// Apenas inicializamos a variável. O filtro de ano já é aplicado abaixo.
+$filter_month = ""; 
 
 
 // Query base com todos os cálculos, FILTRADA para o modelo selecionado
@@ -50,8 +47,9 @@ $model_financial_query = "
     -- NOVO JOIN: Agora junta voos com a frota pela matrícula, não pelo modelo
     LEFT JOIN frota f ON v.registration = f.registration
     WHERE v.flightPlan_aircraft_model = ? AND v.time > 0 AND v.peopleOnBoard > 0
+    AND YEAR(v.createdAt) = YEAR(NOW()) -- FILTRO PERMANENTE DO ANO ATUAL
     " . ($filter_real_fuel ? " AND v.fuel_used > 0 " : "") . " -- Filtro Combustível Real
-    {$filter_month} -- NOVO: Filtro por mês se Combustível Real ativo
+    {$filter_month} -- Variável $filter_month agora é sempre vazia aqui
 ";
 
 // --- KPIs Agregados ---
@@ -69,8 +67,7 @@ $kpi_data = $stmt_kpi->get_result()->fetch_assoc();
 $stmt_kpi->close();
 
 // --- Dados para o gráfico de lucro mensal ---
-// Precisa ser ajustado para pegar os dados do ano inteiro (para não quebrar a exibição anual),
-// MAS com o filtro de mês já embutido no $model_financial_query, ele só retornará dados do mês atual.
+// Agora mostra o histórico do ano atual (JAN até MÊS ATUAL) se o filtro de combustível real estiver ativo.
 $stmt_chart = $conn->prepare("
     SELECT MONTH(createdAt) as month_num, SUM(profit) as monthly_profit
     FROM ({$model_financial_query}) as model_data
@@ -88,21 +85,14 @@ while ($row = $chart_result->fetch_assoc()) {
     $month_index = $row['month_num'] - 1;
     $chart_profit_data[$month_index] = round($row['monthly_profit'] ?? 0);
 }
-// Ajuste para garantir que o gráfico mostre apenas o mês atual se o filtro estiver ativo
-if ($filter_real_fuel) {
-    $current_month_number = date('n');
-    $chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
-    $chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
-} else {
-    // Mantém a visualização anual completa se o filtro não estiver ativo
-    $current_month_number = date('n');
-    $chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
-    $chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
-}
+// Mantém a visualização anual completa até o mês atual
+$current_month_number = date('n');
+$chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
+$chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
 
 
 // --- Voos recentes com Lucro/Prejuízo ---
-// A query usa o $model_financial_query, então a filtragem do mês é automática
+// A query usa o $model_financial_query, então a filtragem do ano e combustível é aplicada
 $stmt_flights = $conn->prepare("SELECT createdAt, orig, dest, time, peopleOnBoard, profit FROM ({$model_financial_query}) as q ORDER BY createdAt DESC LIMIT 15");
 $stmt_flights->bind_param("s", $selected_model);
 $stmt_flights->execute();
@@ -158,7 +148,7 @@ function format_seconds_to_hm($seconds) {
             <p>Relatório Detalhado de Performance Financeira e Operacional</p>
             <?php if ($filter_real_fuel): ?>
                 <p style="color: var(--success); font-weight: 500;">
-                    (Filtro Ativo: Apenas Voos com Combustível Real do MÊS ATUAL)
+                    (Filtro Ativo: Apenas Voos com Combustível Real do Ano Atual)
                 </p>
             <?php endif; ?>
         </div>
