@@ -1,5 +1,5 @@
 {
-    "theme": "default",
+    "theme": "red",
     "language": "pt",
     "company_name": "Kafly",
     "company_email": "contato@kafly.com.br",
@@ -17,5 +17,61 @@
             "matricula": "matricula",
             "email_piloto": "_email_contato"
         }
+    },
+    "homepage_config": {
+        "logo_url": "assets\/logo_header.png",
+        "hero_image_url": "",
+        "menu_links": [
+            {
+                "text": "Home",
+                "url": "index.php",
+                "is_cta": false
+            },
+            {
+                "text": "Frota",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Carreiras",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Pilotos",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Acervo",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Online",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Staff",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Estat\u00edsticas",
+                "url": "index.php",
+                "is_cta": false
+            },
+            {
+                "text": "Contato",
+                "url": "#",
+                "is_cta": false
+            },
+            {
+                "text": "Inscreva-se",
+                "url": "#",
+                "is_cta": true
+            }
+        ]
     }
 }
