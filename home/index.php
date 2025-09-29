@@ -34,6 +34,26 @@ $kpi_data_home = [
 ];
 // ---------------------------------------------------
 
+// NOVO: CONEXÃO COM BANCO DE DADOS E FUNÇÕES
+require_once __DIR__ . '/../../../config_db.php'; // CORREÇÃO DO CAMINHO RELATIVO
+
+$conn_voos = criar_conexao(DB_VOOS_NAME, DB_VOOS_USER, DB_VOOS_PASS);
+$conn_pilotos = criar_conexao(DB_PILOTOS_NAME, DB_PILOTOS_USER, DB_PILOTOS_PASS);
+
+function format_seconds_to_hm($seconds)
+{
+  if (!$seconds || $seconds <= 0) return '00:00';
+  $h = floor($seconds / 3600);
+  $m = floor(($seconds % 3600) / 60);
+  return sprintf('%02d:%02d', $h, $m);
+}
+function format_seconds_to_float($seconds)
+{
+  if (!$seconds || $seconds <= 0) return 0.00;
+  return round($seconds / 3600, 2);
+}
+// FIM NOVO: FUNÇÕES
+
 // Funções de tradução (baseadas na estrutura do seu projeto)
 function t_home($key, $default) {
     global $lang, $company_name;
@@ -52,19 +72,153 @@ function t_home($key, $default) {
         'gadget_title_route' => 'Rota Mais Ativa',
         'aircraft_model' => 'A320',
         'route_name' => 'SBGR ↔ SBGL',
+        'flights_label' => 'Voos',
+        'hours_label' => 'Horas',
+        'hours_in_month' => 'Horas no Mês',
+        'visitor' => 'Visitante',
     ];
     return $lang[$key] ?? $translations[$key] ?? $default;
 }
 
-// --- DADOS ADICIONAIS PARA GADGETS (SIMULADOS) ---
-$recent_flights_data = [
-    ['date' => '28/09', 'pic' => 'LUCAS ALVES', 'route' => 'SBSP-SBCF', 'time' => '01:14', 'network' => 'v'],
-    ['date' => '29/09', 'pic' => 'ANDERSON G.', 'route' => 'SBKP-SBUL', 'time' => '00:31', 'network' => 'i'],
-    ['date' => '27/09', 'pic' => 'VINICIUS M.', 'route' => 'SBME-SBSR', 'time' => '01:26', 'network' => 'v'],
-    ['date' => '26/09', 'pic' => 'MARCOS C.', 'route' => 'SBCF-SBJP', 'time' => '01:30', 'network' => 'i'],
-    ['date' => '25/09', 'pic' => 'WILLIAM N.', 'route' => 'SBCT-SBFI', 'time' => '01:46', 'network' => 'v'],
-];
+// --- DADOS PARA HOVER CARD (Replicado de index.php) ---
+$pilots_details = [];
 
+// 1. Fetch core pilot details (names, photos, IDs) and total hours/flights
+$pilots_sql = "
+    SELECT 
+        p." . COL_VATSIM_ID . " as vatsim_id, 
+        p." . COL_IVAO_ID . " as ivao_id, 
+        CONCAT(p." . COL_FIRST_NAME . ", ' ', p." . COL_LAST_NAME . ") as display_name, 
+        p." . COL_FOTO_PERFIL . " as foto_perfil,
+        COALESCE(SUM(v.time), 0) as total_seconds,
+        COUNT(v.id) as total_flights
+    FROM 
+        " . DB_PILOTOS_NAME . "." . PILOTS_TABLE . " p
+    LEFT JOIN 
+        " . DB_VOOS_NAME . ".voos v ON v.userId = p." . COL_VATSIM_ID . " OR v.userId = p." . COL_IVAO_ID . "
+    WHERE
+        p." . COL_VALIDADO . " = 'true'
+    GROUP BY
+        p." . COL_ID_PILOTO . ", p.post_id, p.first_name, p.last_name, p.foto_perfil, p.vatsim_id, p.ivao_id
+";
+$pilots_result = $conn_pilotos->query($pilots_sql);
+
+if ($pilots_result) {
+  while ($pilot = $pilots_result->fetch_assoc()) {
+    $name = trim($pilot['display_name']);
+    
+    // CORREÇÃO: Pega o caminho RAW do banco de dados, confiando que ele esteja correto (ex: assets/images/joao.png)
+    $photo = $pilot['foto_perfil']; 
+    
+    // NORMALIZAÇÃO PARA ROBUSTEZ: Se for um caminho relativo, remove barras iniciais para o JS prefixar corretamente.
+    if (strpos($photo, 'http') === false && strpos($photo, '//') !== 0) {
+        $photo = trim($photo, '/');
+    }
+
+    $vatsim_id = $pilot['vatsim_id'];
+    $ivao_id = $pilot['ivao_id'];
+    $total_seconds = $pilot['total_seconds'];
+    $total_flights = $pilot['total_flights'];
+    $first_name = explode(' ', $name)[0];
+
+    // Adicionamos 'id' (para o link) e 'first_name' (para o display na lista)
+    $details = [
+        'name' => $name,
+        'first_name' => $first_name,
+        'photo' => $photo, // Foto agora tem o caminho RAW normalizado
+        'total_hours' => floor($total_seconds / 3600),
+        'total_flights' => $total_flights,
+        'monthly_data' => [], 
+        'id' => $vatsim_id ?: $ivao_id 
+    ];
+
+    if (!empty($vatsim_id)) { $pilots_details[$vatsim_id] = $details; }
+    if (!empty($ivao_id)) { $pilots_details[$ivao_id] = $details; }
+  }
+}
+
+// 2. Fetch current month's flights for mini-chart data
+$current_month_flights_sql = "
+    SELECT 
+        userId, 
+        DAY(createdAt) as day, 
+        SUM(time) as total_seconds
+    FROM 
+        " . DB_VOOS_NAME . ".voos
+    WHERE
+        createdAt >= DATE_FORMAT(NOW(), '%Y-%m-01')
+    GROUP BY 
+        userId, DAY(createdAt)
+    ORDER BY
+        day ASC
+";
+$current_month_flights_result = $conn_voos->query($current_month_flights_sql);
+
+if ($current_month_flights_result) {
+    $daily_data_map = [];
+    while ($flight = $current_month_flights_result->fetch_assoc()) {
+        $userId = $flight['userId'];
+        $day = $flight['day'];
+        $total_seconds = $flight['total_seconds'];
+
+        if (!isset($daily_data_map[$userId])) { $daily_data_map[$userId] = []; }
+        $daily_data_map[$userId][$day] = $total_seconds;
+    }
+
+    $current_day_of_month = date('j');
+    foreach ($pilots_details as $userId => &$details) {
+        $monthly_data = array_fill(1, $current_day_of_month, 0); 
+        if (isset($daily_data_map[$userId])) {
+            $current_cumulative_seconds = 0;
+            for ($day = 1; $day <= $current_day_of_month; $day++) {
+                $current_cumulative_seconds += $daily_data_map[$userId][$day] ?? 0;
+                $monthly_data[$day] = round($current_cumulative_seconds / 3600, 1);
+            }
+        }
+        $details['monthly_data'] = array_values($monthly_data);
+    }
+}
+unset($details); // Quebra a referência
+
+// 3. BUSCAR DADOS REAIS DE VOOS (Updated)
+$recent_flights_data = [];
+if ($conn_voos) {
+    $flights_sql = "
+        SELECT 
+            createdAt, 
+            userId, 
+            flightPlan_departureId, 
+            flightPlan_arrivalId, 
+            time, 
+            network 
+        FROM voos 
+        ORDER BY createdAt DESC 
+        LIMIT 5";
+
+    $flights_result = $conn_voos->query($flights_sql);
+
+    if ($flights_result) {
+        while ($flight = $flights_result->fetch_assoc()) {
+            $userId = $flight['userId'];
+            $pilot_info = $pilots_details[$userId] ?? ['first_name' => t_home('visitor', 'Visitante'), 'id' => null];
+
+            $flight_data = [
+                'date' => (new DateTime($flight['createdAt']))->format('d/m'),
+                'pic' => $pilot_info['first_name'], // Display only first name
+                'route' => "{$flight['flightPlan_departureId']}-{$flight['flightPlan_arrivalId']}",
+                'time' => format_seconds_to_hm($flight['time']),
+                'network' => $flight['network'],
+                'user_id' => $userId, 
+                'pilot_details' => $pilots_details[$userId] ?? null 
+            ];
+            $recent_flights_data[] = $flight_data;
+        }
+    }
+    $conn_voos->close();
+}
+if ($conn_pilotos) { $conn_pilotos->close(); }
+
+// --- DADOS ADICIONAIS PARA GADGETS (SIMULADOS mantidos para os outros cards) ---
 $champion_pilot_data = [
     'name' => 'MARCELO PIMENTA',
     'hours' => '33.10',
@@ -77,6 +231,10 @@ $additional_gadgets_data = [
     'total_fleet' => 45,
     'main_aircraft_model' => t_home('aircraft_model', 'A320'),
 ];
+
+// PREPARAÇÃO DO PREFIXO DE CAMPEÃO (IDÊNTICO a index.php)
+// Usamos t() que é definida no config_loader e faz parte do escopo global
+$pilot_of_the_week_prefix = str_replace(' Cat. ', '', t('pilot_of_the_week')); 
 // ---------------------------------------------------
 ?>
 <!DOCTYPE html>
@@ -129,8 +287,9 @@ $additional_gadgets_data = [
             background-color: var(--color-background-light); /* Fundo Branco */
             border-bottom: 1px solid var(--border-color, #e0e0e0); /* Borda sutil */
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-            position: sticky;
+            position: fixed; /* MUDANÇA: Agora é fixo na viewport */
             top: 0;
+            width: 100%; /* Garante que ocupe toda a largura */
             z-index: 1000;
         }
 
@@ -205,6 +364,7 @@ $additional_gadgets_data = [
         /* MAIN SECTION FIX */
         main {
             flex-grow: 1; /* Garante que o main ocupe todo o espaço restante */
+            padding-top: 95px; /* NOVO: Compensação pela altura do cabeçalho fixo */
         }
 
         /* HERO SECTION */
@@ -378,6 +538,7 @@ $additional_gadgets_data = [
             border-bottom: 1px dashed var(--border-color, #e0e0e0);
             font-size: 0.95em;
             align-items: center; /* Alinha o ícone e texto verticalmente */
+            cursor: pointer; /* Adiciona cursor de ponteiro para indicar interatividade */
         }
         .flights-list li:last-child {
             border-bottom: none;
@@ -400,6 +561,10 @@ $additional_gadgets_data = [
             vertical-align: middle;
             opacity: 0.8;
         }
+        .pilot-pic {
+            font-weight: 500;
+        }
+
 
         /* Champion Card */
         .champion-details {
@@ -445,6 +610,22 @@ $additional_gadgets_data = [
             font-size: 0.9em;
             color: var(--color-text);
         }
+        
+        /* MAP SECTION STYLES */
+        .map-section {
+            padding: 30px 0;
+            background-color: var(--background-color); /* Usa o fundo do dashboard/body */
+        }
+        
+        .map-container {
+            max-width: 1400px;
+            margin: auto;
+            padding: 0 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden; /* Garante que o iframe respeite o border-radius */
+            background-color: var(--color-background-light);
+        }
 
         /* FOOTER */
         .footer {
@@ -455,7 +636,79 @@ $additional_gadgets_data = [
             font-size: 0.85em;
             border-top: 1px solid var(--border-color, #e0e0e0); /* Borda cinza sutil */
         }
-
+        
+        /* HOVER CARD STYLES (Copiado e Adaptado de index.php) */
+        #card-piloto-hover {
+            display: none;
+            position: fixed; /* Mudado para fixed para funcionar com o menu fixo */
+            z-index: 2000; /* Z-index alto para ficar acima do menu */
+            width: 250px;
+            padding: 15px;
+            background-color: var(--card-background-color, #fff);
+            border: 1px solid var(--border-color, #e0e0e0);
+            border-radius: 8px;
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(5px);
+            opacity: 0; 
+            transition: opacity 0.3s ease; 
+        }
+        #card-piloto-hover .content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+        #card-piloto-hover .stat-info {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color, #e0e0e0);
+        }
+        #card-piloto-hover .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #card-piloto-hover .stat-label {
+            font-size: 0.75em;
+            color: var(--text-color-light, #666);
+            text-transform: uppercase;
+        }
+        #card-piloto-hover .stat-value {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+        #card-piloto-hover img {
+          width: 80px;
+          height: 80px;
+          object-fit: cover;
+          border-radius: 50%;
+          margin-bottom: 10px;
+          border: 2px solid var(--color-primary);
+        }
+        #card-piloto-hover .name {
+          font-size: 1.1em;
+          font-weight: 700;
+          color: var(--color-text);
+          margin-bottom: 5px;
+        }
+        .monthly-chart-title {
+          font-size: 0.75em;
+          color: var(--text-color-light, #666);
+          text-transform: uppercase;
+          margin-top: 10px;
+          margin-bottom: 5px;
+          text-align: center;
+        }
+        .monthly-chart-container {
+            width: 100%;
+            height: 60px;
+            margin-top: 5px;
+        }
+        
         /* RESPONSIVENESS */
         @media (max-width: 1024px) {
             .gadget-grid {
@@ -602,19 +855,30 @@ $additional_gadgets_data = [
                 <div class="gadget-card" style="grid-column: span 1;">
                     <h3 class="gadget-title"><i class="fa-solid fa-clock-rotate-left" style="margin-right: 8px;"></i><?= t_home('gadget_title_recent', 'Últimos Voos') ?></h3>
                     <ul class="flights-list">
-                        <?php foreach ($recent_flights_data as $flight): ?>
-                        <li>
+                        <?php foreach ($recent_flights_data as $flight): 
+                            $pilot_details_json = '';
+                            if ($flight['pilot_details']) {
+                                // Codifica os detalhes do piloto para o atributo data-pilot
+                                $pilot_details_json = htmlspecialchars(json_encode($flight['pilot_details']), ENT_QUOTES, 'UTF-8');
+                            }
+                        ?>
+                        <li data-pilot='<?= $pilot_details_json ?>' 
+                            onmousemove="if(this.dataset.pilot) showPilotCard(event, this);" 
+                            onmouseout="if(this.dataset.pilot) hidePilotCard();">
                             <span class="flight-info">
                                 <?php if (isset($flight['network'])): ?>
                                     <img class="network-icon" src="../assets/<?= $flight['network'] === 'v' ? 'vatsim_logo.jpg' : 'ivao_logo.jpg' ?>" alt="<?= $flight['network'] === 'v' ? 'VATSIM' : 'IVAO' ?>">
                                 <?php endif; ?>
                                 <span style="opacity: 0.7;"><?= htmlspecialchars($flight['date']) ?></span>
-                                <span><?= htmlspecialchars($flight['pic']) ?></span>
+                                <span class="pilot-pic"><?= htmlspecialchars($flight['pic']) ?></span>
                                 <span class="flight-route"><?= htmlspecialchars($flight['route']) ?></span>
                             </span>
                             <span class="flight-time"><?= htmlspecialchars($flight['time']) ?></span>
                         </li>
                         <?php endforeach; ?>
+                        <?php if (empty($recent_flights_data)): ?>
+                            <li><span class="flight-info" style="justify-content: center; width: 100%; color: var(--text-color-light);">Nenhum voo registrado recentemente.</span></li>
+                        <?php endif; ?>
                     </ul>
                 </div>
 
@@ -657,17 +921,172 @@ $additional_gadgets_data = [
 
             </div>
         </section>
-
-    </main>
+        
+        <section class="map-section">
+            <h3 class="gadget-title" style="margin: 0 auto 15px auto; max-width: 1400px; padding: 0 20px; border-bottom: 2px solid var(--border-color, #e0e0e0);"><i class="fa-solid fa-map-location-dot" style="margin-right: 8px;"></i>Mapa de Operações 3D</h3>
+            <div class="map-container">
+                <iframe src="https://kafly.com.br/mapa/3d/" frameborder="0" style="width: 100%; height: 600px; border: none; border-radius: 8px;" allowfullscreen></iframe>
+            </div>
+        </section>
+        </main>
 
     <footer class="footer">
         <p><?= t_home('footer_text', "&copy; " . date('Y') . " {$company_name} Virtual Airlines. Todos os direitos reservados.") ?></p>
     </footer>
 
+    <div id="card-piloto-hover">
+        <div class="content">
+            <img src="../assets/images/piloto.png" alt="Foto do Piloto">
+            <div class="name"></div>
+            <div id="champion-status-hover" style="font-size: 0.9em; font-weight: 700; margin-bottom: 10px; display: none;"></div>
+            <div class="stat-info">
+                <div class="stat-item">
+                    <span class="stat-label"><?= t_home('flights_label', 'Voos') ?></span>
+                    <span class="stat-value" id="card-vuelos">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label"><?= t_home('hours_label', 'Horas') ?></span>
+                    <span class="stat-value" id="card-horas">0</span>
+                </div>
+            </div>
+            <div class="monthly-chart-title"><?= t_home('hours_in_month', 'Horas no Mês') ?></div>
+            <div class="monthly-chart-container"><svg class="monthly-chart"></svg></div>
+        </div>
+    </div>
     <script>
+        let tooltipTimeout;
+
+        // Função para desenhar o mini gráfico de área
+        function createMiniChart(data, element) {
+          if (!data || data.length === 0) {
+            element.innerHTML = '<span style="font-size: 0.8em; color: #999;">Sem dados neste mês.</span>';
+            return;
+          }
+
+          const svgWidth = element.clientWidth;
+          const svgHeight = element.clientHeight;
+          // Garante que o maxVal não seja 0, para evitar divisão por zero
+          const maxVal = Math.max(...data) > 0 ? Math.max(...data) : 1; 
+          const points = data.map((val, i) => {
+            const x = (i / (data.length - 1)) * svgWidth;
+            // Inverte a coordenada Y (SVG 0,0 é topo-esquerda)
+            const y = svgHeight - (val / maxVal) * svgHeight; 
+            return `${x},${y}`;
+          }).join(' ');
+
+          const style = getComputedStyle(document.body);
+          const primaryColor = style.getPropertyValue('--color-primary').trim() || '#dc3545';
+          
+          const svgContent = `
+            <svg width="${svgWidth}" height="${svgHeight}">
+              <polyline points="${points}" fill="none" stroke="${primaryColor}" stroke-width="2" />
+              <path d="M0,${svgHeight} L${points} L${svgWidth},${svgHeight} Z" fill="${primaryColor}" opacity="0.2"/>
+            </svg>
+          `;
+          element.innerHTML = svgContent;
+        }
+
+        // Função para exibir o cartão de detalhes do piloto
+        function showPilotCard(e, element) {
+            clearTimeout(tooltipTimeout);
+
+            const pilotData = element.dataset.pilot;
+            if (!pilotData) return;
+
+            const pilot = JSON.parse(pilotData);
+            const card = document.getElementById('card-piloto-hover');
+            const img = card.querySelector('img');
+            const nameDiv = card.querySelector('.name');
+            const cardVuelos = document.getElementById('card-vuelos');
+            const cardHoras = document.getElementById('card-horas');
+            const chartContainer = card.querySelector('.monthly-chart-container');
+            const championStatusDiv = card.querySelector('#champion-status-hover');
+
+            // 1. Atualiza dados
+            // CORREÇÃO APLICADA: Verifica se o caminho é absoluto (http/https ou //) ou se começa com uma barra.
+            // Se for um caminho relativo, adiciona '../'.
+            let photoPath = pilot.photo;
+
+            if (photoPath && !photoPath.startsWith('http') && !photoPath.startsWith('//') && !photoPath.startsWith('/')) {
+                 photoPath = `../${photoPath}`;
+            } else if (!photoPath || photoPath === '') {
+                 photoPath = '../assets/images/piloto.png';
+            }
+            
+            img.src = photoPath;
+            img.onerror = function() { this.src = '../assets/images/piloto.png'; };
+            
+            nameDiv.textContent = pilot.name;
+            cardVuelos.textContent = pilot.total_flights;
+            cardHoras.textContent = pilot.total_hours;
+            
+            // --- LÓGICA DO PILOTO DA SEMANA (Copiada de index.php) ---
+            if (pilot.champion_category) {
+                const category = pilot.champion_category;
+                const prefix = "<?= $pilot_of_the_week_prefix ?>"; 
+                const star_icon = '<i class="fa-solid fa-star" style="color: gold; margin-right: 5px;"></i>';
+                const primaryColor = getComputedStyle(document.body).getPropertyValue('--color-primary').trim() || '#dc3545';
+                const category_display = `<span style="background-color: ${primaryColor}; color: #fff; padding: 2px 5px; border-radius: 4px; margin-left: 5px;">${category}</span>`;
+                championStatusDiv.innerHTML = `${star_icon} ${prefix} ${category_display}`;
+                championStatusDiv.style.display = 'block';
+            } else {
+                championStatusDiv.style.display = 'none';
+            }
+            // --- FIM LÓGICA DO PILOTO DA SEMANA ---
+            
+            // 2. Cria o mini gráfico
+            createMiniChart(pilot.monthly_data, card.querySelector('.monthly-chart-container'));
+
+            // 3. Posiciona e exibe o card
+            // Usa clientX/clientY para obter a posição relativa à viewport (necessário para position: fixed)
+            card.style.left = `${e.clientX + 15}px`;
+            // Tenta posicionar acima da posição atual, se houver espaço
+            const scrollY = window.scrollY;
+            const elementTop = element.getBoundingClientRect().top + scrollY;
+            card.style.display = 'block'; // Necessário para medir altura
+            const cardHeight = card.offsetHeight || 250; 
+            
+            // Calcula a posição Y, ajustando para ficar no topo da linha e adiciona um pequeno offset
+            let newY = e.clientY - (cardHeight / 2);
+            
+            // Corrige se sair da tela (topo)
+            if (newY < 10) newY = 10; 
+            
+            // Corrige se sair da tela (base)
+            const windowHeight = window.innerHeight;
+            if (newY + cardHeight + 10 > windowHeight) newY = windowHeight - cardHeight - 10;
+            
+            card.style.top = `${newY}px`;
+            
+            // card.style.display = 'block'; // Já está aqui, mas se for movido, pode ser necessário descomentar
+            setTimeout(() => {
+                card.style.opacity = 1;
+            }, 10);
+        }
+
+        // Função para esconder o cartão de detalhes do piloto
+        function hidePilotCard() {
+            tooltipTimeout = setTimeout(() => {
+                const card = document.getElementById('card-piloto-hover');
+                card.style.opacity = 0;
+                
+                setTimeout(() => {
+                    card.style.display = 'none';
+                }, 300);
+            }, 300);
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const menuToggle = document.getElementById('mobile-menu');
             const navList = document.getElementById('nav-list');
+            const hoverCard = document.getElementById('card-piloto-hover');
+            
+            // Adiciona listeners para os itens da lista de voos
+            document.querySelectorAll('.flights-list li').forEach(item => {
+                item.addEventListener('mousemove', (e) => showPilotCard(e, item));
+                item.addEventListener('mouseout', hidePilotCard);
+            });
+
 
             menuToggle.addEventListener('click', () => {
                 navList.classList.toggle('open');
@@ -675,6 +1094,11 @@ $additional_gadgets_data = [
                 menuToggle.querySelector('i').classList.toggle('fa-bars', !isOpened);
                 menuToggle.querySelector('i').classList.toggle('fa-xmark', isOpened);
             });
+            
+            // Listeners para evitar que o card suma ao passar o mouse sobre ele
+            hoverCard.addEventListener('mouseover', () => clearTimeout(tooltipTimeout));
+            hoverCard.addEventListener('mouseout', hidePilotCard);
+
         });
     </script>
 </body>
