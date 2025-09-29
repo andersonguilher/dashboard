@@ -11,25 +11,29 @@ $conn = criar_conexao(DB_VOOS_NAME, DB_VOOS_USER, DB_VOOS_PASS);
 define('AIRPORT_TAX_PER_PAX', 45.20);
 define('HANDLING_FEE_PER_FLIGHT', 850.00);
 define('FUEL_PRICE_PER_LITER', 5.85);
+// NOVO: Fator de conversão US Gallon para Litros
+define('GALLONS_TO_LITERS', 3.78541); 
+
+// NOVO: Define o filtro para voos com fuel_used > 0
+$filter_real_fuel = isset($_GET['real_fuel']) && $_GET['real_fuel'] == '1';
 
 $financial_query_base = "
     SELECT
-        v.time, v.peopleOnBoard, v.flightPlan_aircraft_model AS aircraft_model, v.createdAt, v.flightPlan_departureId as orig, v.flightPlan_arrivalId as dest,
-        (v.peopleOnBoard * (v.time / 3600) * COALESCE(f_avg.avg_rev_pax_hr, 120)) AS revenue,
-        (v.time / 3600) * COALESCE(f_avg.avg_op_cost, 2000) as cost_ops,
-        (v.time / 3600) * COALESCE(f_avg.avg_maint, 500) as cost_maint,
-        (v.time / 3600) * COALESCE(f_avg.avg_fuel, 3000) * " . FUEL_PRICE_PER_LITER . " as cost_fuel,
+        v.time, v.peopleOnBoard, v.flightPlan_aircraft_model AS aircraft_model, v.createdAt, v.flightPlan_departureId as orig, v.flightPlan_arrivalId as dest, v.fuel_used,
+        v.registration, -- Matrícula do voo
+        -- CÁLCULOS AGORA UTILIZAM OS VALORES DA MATRÍCULA ESPECÍFICA (f)
+        (v.peopleOnBoard * (v.time / 3600) * COALESCE(f.revenue_per_pax_per_hour, 120)) AS revenue,
+        (v.time / 3600) * COALESCE(f.operational_cost_per_hour, 2000) as cost_ops,
+        (v.time / 3600) * COALESCE(f.maintenance_per_hour, 500) as cost_maint,
+        (
+            -- CORREÇÃO: Converte v.fuel_used (galões) para litros antes de multiplicar pelo preço por litro.
+            COALESCE(v.fuel_used * " . GALLONS_TO_LITERS . ", (v.time / 3600) * COALESCE(f.fuel_consumption_per_hour, 3000)) * " . FUEL_PRICE_PER_LITER . " 
+        ) as cost_fuel,
         (v.peopleOnBoard * " . AIRPORT_TAX_PER_PAX . " + " . HANDLING_FEE_PER_FLIGHT . ") as cost_fees
     FROM voos v
-    LEFT JOIN (
-        SELECT model, 
-               AVG(operational_cost_per_hour) AS avg_op_cost, 
-               AVG(maintenance_per_hour) AS avg_maint,
-               AVG(fuel_consumption_per_hour) AS avg_fuel,
-               AVG(revenue_per_pax_per_hour) AS avg_rev_pax_hr
-        FROM frota GROUP BY model
-    ) AS f_avg ON v.flightPlan_aircraft_model = f_avg.model
+    LEFT JOIN frota f ON v.registration = f.registration -- JOIN: por Matrícula
     WHERE v.time > 0 AND v.peopleOnBoard > 0
+    " . ($filter_real_fuel ? " AND v.fuel_used > 0 " : "") . " -- CLÁUSULA DE FILTRO
 ";
 $financial_query_base_with_profit = "
     SELECT q.*, 
@@ -78,8 +82,30 @@ foreach ($chart_data as $key => &$value) {
 }
 $recent_flights_log_sql = "SELECT orig, dest, profit, createdAt FROM ({$financial_query_base_with_profit}) as q ORDER BY createdAt DESC LIMIT 5";
 $recent_flights_log = $conn->query($recent_flights_log_sql);
-$fleet_list_result = $conn->query("SELECT registration, model, category, operational_cost_per_hour, fuel_consumption_per_hour FROM frota WHERE model IN (SELECT DISTINCT flightPlan_aircraft_model FROM voos WHERE YEAR(createdAt) = YEAR(NOW())) ORDER BY model, registration");
+
+// Lógica para filtrar a Frota Operacional - AGORA POR REGISTRO
+$voos_filter_where = " YEAR(v.createdAt) = YEAR(NOW()) ";
+if ($filter_real_fuel) {
+    // Adiciona o filtro de combustível real > 0
+    $voos_filter_where .= " AND v.fuel_used > 0 ";
+}
+
+$fleet_list_sql = "
+    SELECT DISTINCT 
+        f.registration, 
+        f.model, 
+        f.category, 
+        f.operational_cost_per_hour, 
+        f.fuel_consumption_per_hour 
+    FROM frota f
+    INNER JOIN voos v ON f.registration = v.registration -- JOIN pela matrícula
+    WHERE " . $voos_filter_where . "
+    ORDER BY f.model, f.registration
+";
+
+$fleet_list_result = $conn->query($fleet_list_sql);
 $conn->close();
+
 function calculate_percentage_change($current, $previous) {
     if ($previous == 0) return ['value' => 0, 'class' => 'neutral', 'icon' => '&#8212;'];
     $change = (($current - $previous) / abs($previous)) * 100;
@@ -108,9 +134,10 @@ $pax_change = calculate_percentage_change($monthly_kpi['pax'], $last_month_kpi['
         html, body { height: auto; margin: 0; padding: 0; }
         body { font-family: 'Roboto', sans-serif; background-color: var(--bg); color: var(--text-primary); }
         .main-container { width: 100%; max-width: 1800px; margin: 0 auto; padding: 20px; }
-        .dashboard-container { display: grid; gap: 20px; grid-template-columns: repeat(4, 1fr); grid-template-rows: auto; grid-template-areas: "header header header header" "kpi1 kpi2 kpi3 kpi4" "mainchart mainchart mainchart side" "footer footer footer footer"; }
+        .dashboard-container { display: grid; gap: 20px; grid-template-columns: repeat(4, 1fr); grid-template-rows: auto; grid-template-areas: "header header header header" "filter_bar filter_bar filter_bar filter_bar" "kpi1 kpi2 kpi3 kpi4" "mainchart mainchart mainchart side" "footer footer footer footer"; }
         .card { background-color: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 25px; display: flex; flex-direction: column; }
         .header { grid-area: header; flex-direction: row; align-items: center; justify-content: space-between; }
+        .filter-bar { grid-area: filter_bar; display: flex; align-items: center; justify-content: flex-start; padding: 10px 25px; } 
         .kpi-card { grid-area: kpi; }
         .main-chart { grid-area: mainchart; }
         .side-cards { grid-area: side; display: flex; flex-direction: column; gap: 20px; }
@@ -183,14 +210,24 @@ $pax_change = calculate_percentage_change($monthly_kpi['pax'], $last_month_kpi['
             box-shadow: 0 0 0 2px rgba(74, 114, 255, 0.2);
         }
         
-        @media (max-width: 1200px) { .dashboard-container { grid-template-columns: repeat(2, 1fr); grid-template-areas: "header header" "kpi1 kpi2" "kpi3 kpi4" "mainchart mainchart" "side side" "footer footer"; } .side-cards { flex-direction: row; } .side-cards .card { flex: 1; } }
-        @media (max-width: 768px) { .main-container { padding: 10px; } .dashboard-container { grid-template-columns: 1fr; grid-template-areas: "header" "kpi1" "kpi2" "kpi3" "kpi4" "mainchart" "side" "footer"; } .side-cards { flex-direction: column; } }
+        @media (max-width: 1200px) { .dashboard-container { grid-template-columns: repeat(2, 1fr); grid-template-areas: "header header" "filter_bar filter_bar" "kpi1 kpi2" "kpi3 kpi4" "mainchart mainchart" "side side" "footer footer"; } .side-cards { flex-direction: row; } .side-cards .card { flex: 1; } }
+        @media (max-width: 768px) { .main-container { padding: 10px; } .dashboard-container { grid-template-columns: 1fr; grid-template-areas: "header" "filter_bar" "kpi1" "kpi2" "kpi3" "kpi4" "mainchart" "side" "footer"; } .side-cards { flex-direction: column; } }
     </style>
 </head>
 <body>
     <div class="main-container">
         <div class="dashboard-container">
              <header class="card header"><div><h1>Painel de Controle Financeiro</h1><p>Análise de performance da companhia</p></div><p>Atualizado em: <?= date('d/m/Y H:i') ?></p></header>
+            
+            <div class="card filter-bar">
+                <p style="margin:0; font-weight: 500; color: var(--text-secondary); display: inline-block; margin-right: 15px;">Filtros Rápidos:</p>
+                <?php if ($filter_real_fuel): ?>
+                    <a href="index.php" class="control-btn active" style="background-color: var(--success); border-color: var(--success);">✔ Voos com Combustível Real</a>
+                <?php else: ?>
+                    <a href="index.php?real_fuel=1" class="control-btn">Voos com Combustível Real</a>
+                <?php endif; ?>
+            </div>
+
             <div class="card kpi-card" id="kpi-revenue"><div class="label"><i class="fa-solid fa-dollar-sign"></i>Receita (Mês)</div><div class="value">R$ <?= number_format($monthly_kpi['revenue'] ?? 0, 2, ',', '.') ?></div><div class="trend <?= $revenue_change['class'] ?>"><span><?= $revenue_change['icon'] ?> <?= $revenue_change['value'] ?>%</span> vs. Mês Anterior</div></div>
             <div class="card kpi-card" id="kpi-profit"><div class="label"><i class="fa-solid fa-arrow-trend-up"></i>Lucro (Mês)</div><div class="value">R$ <?= number_format($monthly_kpi['profit'] ?? 0, 2, ',', '.') ?></div><div class="trend <?= $profit_change['class'] ?>"><span><?= $profit_change['icon'] ?> <?= $profit_change['value'] ?>%</span> vs. Mês Anterior</div></div>
             <div class="card kpi-card" id="kpi-pax"><div class="label"><i class="fa-solid fa-users"></i>Passageiros (Mês)</div><div class="value"><?= number_format($monthly_kpi['pax'] ?? 0) ?></div><div class="trend <?= $pax_change['class'] ?>"><span><?= $pax_change['icon'] ?> <?= $pax_change['value'] ?>%</span> vs. Mês Anterior</div></div>
@@ -236,7 +273,8 @@ $pax_change = calculate_percentage_change($monthly_kpi['pax'], $last_month_kpi['
                         <tbody>
                             <?php if($fleet_list_result) { while($row = $fleet_list_result->fetch_assoc()): ?>
                             <tr class="fleet-row" data-model="<?= htmlspecialchars($row['model']) ?>">
-                                <td><a href="relatorio_aeronave.php?model=<?= urlencode($row['model']) ?>"><?= htmlspecialchars($row['registration']) ?></a></td>
+                                <?php $link_params = 'model=' . urlencode($row['model']) . ($filter_real_fuel ? '&real_fuel=1' : ''); ?>
+                                <td><a href="relatorio_aeronave.php?<?= $link_params ?>"><?= htmlspecialchars($row['registration']) ?></a></td>
                                 <td><?= htmlspecialchars($row['model']) ?></td>
                                 <td><?= htmlspecialchars($row['category']) ?></td>
                                 <td>R$ <?= number_format($row['operational_cost_per_hour'], 0, ',', '.') ?></td>

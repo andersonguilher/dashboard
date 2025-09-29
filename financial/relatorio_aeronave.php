@@ -17,28 +17,45 @@ if (!$selected_model) {
 define('AIRPORT_TAX_PER_PAX', 45.20);
 define('HANDLING_FEE_PER_FLIGHT', 850.00);
 define('FUEL_PRICE_PER_LITER', 5.85);
+// Fator de conversão US Gallon para Litros
+define('GALLONS_TO_LITERS', 3.78541); 
+
+// Define o filtro para voos com fuel_used > 0, lendo da URL
+$filter_real_fuel = isset($_GET['real_fuel']) && $_GET['real_fuel'] == '1';
+
+// NOVO: Adiciona filtro para limitar ao MÊS ATUAL se o filtro de combustível real estiver ativo.
+$filter_month = "";
+if ($filter_real_fuel) {
+    // Se o filtro de Combustível Real estiver ativo, forçamos o filtro do mês atual.
+    $filter_month = " AND MONTH(v.createdAt) = MONTH(NOW()) AND YEAR(v.createdAt) = YEAR(NOW()) ";
+}
+
 
 // Query base com todos os cálculos, FILTRADA para o modelo selecionado
 $model_financial_query = "
     SELECT
-        v.time, v.peopleOnBoard, v.flightPlan_aircraft_model AS aircraft_model, v.createdAt, v.flightPlan_departureId as orig, v.flightPlan_arrivalId as dest,
-        (v.peopleOnBoard * (v.time / 3600) * COALESCE(f_avg.avg_rev_pax_hr, 120)) AS revenue,
-        (v.time / 3600) * COALESCE(f_avg.avg_op_cost, 2000) as cost_ops,
-        (v.time / 3600) * COALESCE(f_avg.avg_maint, 500) as cost_maint,
-        (v.time / 3600) * COALESCE(f_avg.avg_fuel, 3000) * " . FUEL_PRICE_PER_LITER . " as cost_fuel,
+        v.time, v.peopleOnBoard, v.flightPlan_aircraft_model AS aircraft_model, v.createdAt, v.flightPlan_departureId as orig, v.flightPlan_arrivalId as dest, v.fuel_used,
+        -- CÁLCULOS AGORA UTILIZAM OS VALORES DA MATRÍCULA ESPECÍFICA (f)
+        (v.peopleOnBoard * (v.time / 3600) * COALESCE(f.revenue_per_pax_per_hour, 120)) AS revenue,
+        (v.time / 3600) * COALESCE(f.operational_cost_per_hour, 2000) as cost_ops,
+        (v.time / 3600) * COALESCE(f.maintenance_per_hour, 500) as cost_maint,
+        (
+            -- CORREÇÃO: Converte v.fuel_used (galões) para litros antes de multiplicar.
+            COALESCE(v.fuel_used * " . GALLONS_TO_LITERS . ", (v.time / 3600) * COALESCE(f.fuel_consumption_per_hour, 3000)) * " . FUEL_PRICE_PER_LITER . "
+        ) as cost_fuel,
         (v.peopleOnBoard * " . AIRPORT_TAX_PER_PAX . " + " . HANDLING_FEE_PER_FLIGHT . ") as cost_fees,
-        ((v.peopleOnBoard * (v.time / 3600) * COALESCE(f_avg.avg_rev_pax_hr, 120)) - ((v.time / 3600) * COALESCE(f_avg.avg_op_cost, 2000) + (v.time / 3600) * COALESCE(f_avg.avg_maint, 500) + (v.time / 3600) * COALESCE(f_avg.avg_fuel, 3000) * " . FUEL_PRICE_PER_LITER . " + (v.peopleOnBoard * " . AIRPORT_TAX_PER_PAX . " + " . HANDLING_FEE_PER_FLIGHT . "))) as profit
+        -- O cálculo de PROOFIT também foi atualizado para usar os valores da matrícula e o fator de conversão
+        ((v.peopleOnBoard * (v.time / 3600) * COALESCE(f.revenue_per_pax_per_hour, 120)) - ((v.time / 3600) * COALESCE(f.operational_cost_per_hour, 2000) + (v.time / 3600) * COALESCE(f.maintenance_per_hour, 500) + (COALESCE(v.fuel_used * " . GALLONS_TO_LITERS . ", (v.time / 3600) * COALESCE(f.fuel_consumption_per_hour, 3000))) * " . FUEL_PRICE_PER_LITER . " + (v.peopleOnBoard * " . AIRPORT_TAX_PER_PAX . " + " . HANDLING_FEE_PER_FLIGHT . "))) as profit
     FROM voos v
-    LEFT JOIN (
-        SELECT model, 
-               AVG(operational_cost_per_hour) AS avg_op_cost, AVG(maintenance_per_hour) AS avg_maint,
-               AVG(fuel_consumption_per_hour) AS avg_fuel, AVG(revenue_per_pax_per_hour) AS avg_rev_pax_hr
-        FROM frota GROUP BY model
-    ) AS f_avg ON v.flightPlan_aircraft_model = f_avg.model
+    -- NOVO JOIN: Agora junta voos com a frota pela matrícula, não pelo modelo
+    LEFT JOIN frota f ON v.registration = f.registration
     WHERE v.flightPlan_aircraft_model = ? AND v.time > 0 AND v.peopleOnBoard > 0
+    " . ($filter_real_fuel ? " AND v.fuel_used > 0 " : "") . " -- Filtro Combustível Real
+    {$filter_month} -- NOVO: Filtro por mês se Combustível Real ativo
 ";
 
 // --- KPIs Agregados ---
+// A query usa o $model_financial_query, então a filtragem do mês é automática
 $stmt_kpi = $conn->prepare("
     SELECT
         COUNT(*) as total_flights, SUM(time) as total_seconds, SUM(peopleOnBoard) as total_pax,
@@ -52,6 +69,8 @@ $kpi_data = $stmt_kpi->get_result()->fetch_assoc();
 $stmt_kpi->close();
 
 // --- Dados para o gráfico de lucro mensal ---
+// Precisa ser ajustado para pegar os dados do ano inteiro (para não quebrar a exibição anual),
+// MAS com o filtro de mês já embutido no $model_financial_query, ele só retornará dados do mês atual.
 $stmt_chart = $conn->prepare("
     SELECT MONTH(createdAt) as month_num, SUM(profit) as monthly_profit
     FROM ({$model_financial_query}) as model_data
@@ -69,11 +88,21 @@ while ($row = $chart_result->fetch_assoc()) {
     $month_index = $row['month_num'] - 1;
     $chart_profit_data[$month_index] = round($row['monthly_profit'] ?? 0);
 }
-$current_month_number = date('n');
-$chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
-$chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
+// Ajuste para garantir que o gráfico mostre apenas o mês atual se o filtro estiver ativo
+if ($filter_real_fuel) {
+    $current_month_number = date('n');
+    $chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
+    $chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
+} else {
+    // Mantém a visualização anual completa se o filtro não estiver ativo
+    $current_month_number = date('n');
+    $chart_labels = array_slice($chart_yearly_labels_template, 0, $current_month_number);
+    $chart_profit_data = array_slice($chart_profit_data, 0, $current_month_number);
+}
+
 
 // --- Voos recentes com Lucro/Prejuízo ---
+// A query usa o $model_financial_query, então a filtragem do mês é automática
 $stmt_flights = $conn->prepare("SELECT createdAt, orig, dest, time, peopleOnBoard, profit FROM ({$model_financial_query}) as q ORDER BY createdAt DESC LIMIT 15");
 $stmt_flights->bind_param("s", $selected_model);
 $stmt_flights->execute();
@@ -117,15 +146,21 @@ function format_seconds_to_hm($seconds) {
         .flights-table th, .flights-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); }
         .flights-table th { color: var(--text-secondary); }
         .back-link { display: inline-block; margin-bottom: 20px; color: var(--accent); text-decoration: none; font-weight: 500; }
+        .back-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="main-container">
-        <a href="financeiro.php" class="back-link">&larr; Voltar ao Dashboard Principal</a>
+        <a href="index.php" class="back-link">&larr; Voltar ao Dashboard Principal</a>
 
         <div class="card report-header">
             <h1><?= htmlspecialchars($selected_model) ?></h1>
             <p>Relatório Detalhado de Performance Financeira e Operacional</p>
+            <?php if ($filter_real_fuel): ?>
+                <p style="color: var(--success); font-weight: 500;">
+                    (Filtro Ativo: Apenas Voos com Combustível Real do MÊS ATUAL)
+                </p>
+            <?php endif; ?>
         </div>
 
         <div class="card">
@@ -135,16 +170,6 @@ function format_seconds_to_hm($seconds) {
                 <div class="kpi-item"><div class="label">Lucro/Prejuízo Total</div><div class="value <?= ($kpi_data['total_profit'] ?? 0) >= 0 ? 'positive' : 'negative' ?>">R$ <?= number_format($kpi_data['total_profit'] ?? 0, 2, ',', '.') ?></div></div>
                 <div class="kpi-item"><div class="label">Total de Voos</div><div class="value"><?= number_format($kpi_data['total_flights'] ?? 0) ?></div></div>
                 <div class="kpi-item"><div class="label">Total de Passageiros</div><div class="value"><?= number_format($kpi_data['total_pax'] ?? 0) ?></div></div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Detalhamento de Custos (Total)</h2>
-            <div class="kpi-grid">
-                <div class="kpi-item"><div class="label">Custo de Combustível</div><div class="value">R$ <?= number_format($kpi_data['total_cost_fuel'] ?? 0, 2, ',', '.') ?></div></div>
-                <div class="kpi-item"><div class="label">Custo de Manutenção</div><div class="value">R$ <?= number_format($kpi_data['total_cost_maint'] ?? 0, 2, ',', '.') ?></div></div>
-                <div class="kpi-item"><div class="label">Custo Operacional</div><div class="value">R$ <?= number_format($kpi_data['total_cost_ops'] ?? 0, 2, ',', '.') ?></div></div>
-                <div class="kpi-item"><div class="label">Taxas e Encargos</div><div class="value">R$ <?= number_format($kpi_data['total_cost_fees'] ?? 0, 2, ',', '.') ?></div></div>
             </div>
         </div>
 
@@ -169,7 +194,7 @@ function format_seconds_to_hm($seconds) {
                                 <td class="<?= ($flight['profit'] ?? 0) >= 0 ? 'positive' : 'negative' ?>" style="font-weight:bold;">R$ <?= number_format($flight['profit'] ?? 0, 2, ',', '.') ?></td>
                             </tr>
                         <?php endwhile; else: ?>
-                            <tr><td colspan="6" style="text-align:center;">Nenhum voo registrado para este modelo.</td></tr>
+                            <tr><td colspan="6" style="text-align:center;">Nenhum voo registrado para este modelo com os filtros atuais.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
