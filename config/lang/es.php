@@ -90,5 +90,7 @@ $lang = [
     'top_5_destinations' => 'Top 5 Destinos',
     'flights_label_plural' => 'vuelos',
     'col_duration' => 'DURACIÓN',
+    'col_landing_vs' => 'ATERRIZAJE (V/S)', // NUEVO
+    'col_fuel_used' => 'COMBUSTIBLE (L)', // NOVO
     'no_flights_for_network' => 'No hay vuelos registrados para esta red.',
 ];

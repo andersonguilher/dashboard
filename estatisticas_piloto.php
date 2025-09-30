@@ -12,6 +12,9 @@ require_once __DIR__ . '/../../config_db.php'; // Ajuste o caminho conforme nece
 $conn_pilotos = criar_conexao(DB_PILOTOS_NAME, DB_PILOTOS_USER, DB_PILOTOS_PASS);
 $conn_voos = criar_conexao(DB_VOOS_NAME, DB_VOOS_USER, DB_VOOS_PASS);
 
+// Adiciona constante de conversão de Gallon (voos.fuel_used) para Litros (Visto em financial/index.php)
+define('GALLONS_TO_LITERS', 3.78541); 
+
 function format_seconds_to_hm($seconds)
 {
   if (!$seconds || $seconds <= 0) return '00:00';
@@ -162,7 +165,8 @@ if (!empty($bind_params)) { $stmt_acft->bind_param($bind_types, ...$bind_params)
 $stmt_acft->execute();
 $top_aircraft = $stmt_acft->get_result()->fetch_assoc();
 $stmt_acft->close();
-$query_flights = "SELECT flightPlan_aircraft_model as EQP, flightPlan_departureId as ORIG, flightPlan_arrivalId as DEST, time, createdAt FROM voos " . $sql_where_clause . " ORDER BY createdAt DESC LIMIT 10";
+// ALTERAÇÃO AQUI: Adicionar landing_vs e fuel_used à query de voos recentes
+$query_flights = "SELECT flightPlan_aircraft_model as EQP, flightPlan_departureId as ORIG, flightPlan_arrivalId as DEST, time, createdAt, landing_vs, fuel_used FROM voos " . $sql_where_clause . " ORDER BY createdAt DESC LIMIT 10";
 $stmt_flights = $conn_voos->prepare($query_flights);
 if (!empty($bind_params)) { $stmt_flights->bind_param($bind_types, ...$bind_params); }
 $stmt_flights->execute();
@@ -302,14 +306,57 @@ $conn_voos->close();
         <div class="card">
             <h2><?= t('recent_flights') ?> (<?= $titulo_rede ?>)</h2>
             <table>
-                <thead><tr><th><?= t('col_date') ?></th><th><?= t('col_eqp') ?></th><th><?= t('col_orig') ?></th><th><?= t('col_dest') ?></th><th><?= t('col_duration') ?></th></tr></thead>
+                <thead>
+                    <tr>
+                        <th><?= t('col_date') ?></th>
+                        <th><?= t('col_eqp') ?></th>
+                        <th><?= t('col_orig') ?></th>
+                        <th><?= t('col_dest') ?></th>
+                        <th><?= t('col_duration') ?></th>
+                        <th><?= t('col_landing_vs') ?></th> 
+                        <th><?= t('col_fuel_used') ?></th> </tr>
+                </thead>
                 <tbody>
                     <?php if ($recent_flights_result->num_rows > 0): while ($flight = $recent_flights_result->fetch_assoc()): ?>
                         <tr>
-                            <td><?= (new DateTime($flight['createdAt']))->format('d/m/Y') ?></td><td><?= htmlspecialchars($flight['EQP']) ?></td><td><?= htmlspecialchars($flight['ORIG']) ?></td><td><?= htmlspecialchars($flight['DEST']) ?></td><td><?= format_seconds_to_hm($flight['time']) ?></td>
+                            <td><?= (new DateTime($flight['createdAt']))->format('d/m/Y') ?></td>
+                            <td><?= htmlspecialchars($flight['EQP']) ?></td>
+                            <td><?= htmlspecialchars($flight['ORIG']) ?></td>
+                            <td><?= htmlspecialchars($flight['DEST']) ?></td>
+                            <td><?= format_seconds_to_hm($flight['time']) ?></td>
+                            <td style="font-weight: 700;">
+                                <?php if (!is_null($flight['landing_vs'])): 
+                                    $vs = abs($flight['landing_vs']); 
+                                    
+                                    if ($vs == 0) { // Se for zero, exibe o traço.
+                                        echo '-';
+                                    } else {
+                                        // Definição de cores simplificada para o V/S
+                                        $color = ($vs <= 200) ? '#28a745' : (($vs <= 400) ? '#ffc107' : '#dc3545'); // Green, Yellow, Red
+                                        ?>
+                                        <span style="color: <?= $color ?>;"><?= number_format($vs, 0, '.', '') ?> fpm</span>
+                                    <?php } ?>
+                                    
+                                <?php else: ?>
+                                    <span style="color: var(--text-color-light);"><?= t('not_available_abbr') ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="font-weight: 700;">
+                                <?php 
+                                $fuel_gal = $flight['fuel_used'];
+                                if (!is_null($fuel_gal) && $fuel_gal > 0):
+                                    // Converte para litros e formata
+                                    $fuel_liters = $fuel_gal * GALLONS_TO_LITERS;
+                                    echo number_format($fuel_liters, 0, ',', '.') . ' L';
+                                elseif ($fuel_gal === '0' || $fuel_gal === 0.00): // Trata 0 como traço
+                                    echo '-';
+                                else: ?>
+                                    <span style="color: var(--text-color-light);"><?= t('not_available_abbr') ?></span>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endwhile; else: ?>
-                        <tr><td colspan="5" style="text-align:center; color: #999;"><?= t('no_flights_for_network') ?></td></tr>
+                        <tr><td colspan="7" style="text-align:center; color: #999;"><?= t('no_flights_for_network') ?></td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
