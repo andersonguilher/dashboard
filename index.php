@@ -161,6 +161,8 @@ $start_of_previous_week_gmt = gmdate('Y-m-d 00:00:00', strtotime('monday last we
 // --- VARIÁVEIS DE DESTAQUE ATUAL EM GMT ---
 $current_gmt_day_of_month = (int)gmdate('j', $current_gmt_time); // Dia do mês em GMT (para o gráfico mensal)
 $current_gmt_day_of_week = (int)gmdate('w', $current_gmt_time); // Dia da semana em GMT (0=Dom, 1=Seg... para o gráfico semanal)
+// CORREÇÃO: Variável para comparação de data YYYY-MM-DD (usada abaixo)
+$current_gmt_day = gmdate('Y-m-d', $current_gmt_time);
 
 
 // --- LÓGICA DE BUSCA DE DADOS TOP PILOTOS E HORAS SEMANAIS (AJUSTADO) ---
@@ -374,13 +376,22 @@ for ($i = 0; $i < 7; $i++) {
     $chart_data_horas_semana_anterior_corrigido[$i] = $map_semana_anterior_corrigido[$data_da_semana_anterior] ?? 0;
     
     // Preenche o array da semana atual, mas define como nulo para dias futuros em GMT, para que a linha não avance no tempo
-    // Compara a data de 23:59:59 GMT do dia com o GMT atual
-    if (strtotime($data_da_semana_atual . ' 23:59:59') > $current_gmt_time) {
+    // CORREÇÃO: Compara a data do loop com a data atual (Y-m-d). Se for estritamente maior (data futura), define como nulo.
+    if ($data_da_semana_atual > $current_gmt_day) {
         $chart_data_horas_semana_atual_corrigido[$i] = null;
     } else {
         $chart_data_horas_semana_atual_corrigido[$i] = $map_semana_atual_corrigido[$data_da_semana_atual] ?? 0;
     }
 }
+
+// --- CORREÇÃO DE LINHAS RETAS: Remove pontos nulos do final do array da semana atual ---
+// Isso impede o Chart.js de conectar o último ponto válido a um 'null' na última posição do array.
+$chart_data_horas_semana_atual_corrigido = array_reverse($chart_data_horas_semana_atual_corrigido);
+while (count($chart_data_horas_semana_atual_corrigido) > 0 && is_null($chart_data_horas_semana_atual_corrigido[0])) {
+    array_shift($chart_data_horas_semana_atual_corrigido);
+}
+$chart_data_horas_semana_atual_corrigido = array_reverse($chart_data_horas_semana_atual_corrigido);
+// --- FIM CORREÇÃO DE LINHAS RETAS ---
 
 $chart_data_vuelos_mes_actual = array_values(get_daily_stats_for_month($conn_voos, 0, 'COUNT(*)'));
 $chart_data_vuelos_mes_anterior = array_values(get_daily_stats_for_month($conn_voos, 1, 'COUNT(*)'));
